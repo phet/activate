@@ -11,7 +11,7 @@
 */
 package k_k_.concurrent.activate.loiter
 
-import k_k_.concurrent.activate.core.{Event,Activity,Activatom}
+import k_k_.concurrent.activate.core.{Event, Activity, Activatom}
 
 
 object Guard {
@@ -31,9 +31,8 @@ sealed abstract class Guard {
   def ?+>(a: Activity): Activatom =
     new Activatom(this, a)
  
-  override
-  def toString: String = {
-    return this match {
+  override def toString: String =
+    this match {
       case Non_Guard                        =>       "True"
       case Existential_Guard(event)         =>       event.toString
       case Negated_Existential_Guard(event) => "!" + event.toString
@@ -41,7 +40,6 @@ sealed abstract class Guard {
       case Conjoined_Guard(lhs, rhs)        => "(" + lhs + " && " + rhs + ")"
       case Disjoined_Guard(lhs, rhs)        => "(" + lhs + " || " + rhs + ")"
     }
-  }
 }
 
 
@@ -49,7 +47,9 @@ case object Non_Guard
     extends Guard
 
 case class Existential_Guard(event: Event)
-    extends Guard
+    extends Guard {
+  override def unary_! = Negated_Guard(event)
+}
 
 case class Negated_Existential_Guard(event: Event)
     extends Guard

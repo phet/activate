@@ -12,7 +12,6 @@
 package k_k_.concurrent.activate.loiter.eval
 
 import k_k_.concurrent.activate.core.Event
-import k_k_.concurrent.activate.util.Reverse_Foreach
 
 import scala.collection.mutable.Queue
 
@@ -25,28 +24,28 @@ trait Pending {
 object Transaction {
   type Id = Long
 
-  val NIL_ID: Id = 0;
-  val INITIALIZATION_ID: Id = 1;
+  val NIL_ID: Id = 0L
+  val INITIALIZATION_ID: Id = 1L
 }
 
 abstract class Transaction(
   private val id: Transaction.Id,
   private val parent: Option[Transaction]
-  ) extends Iterator[Event] with Reverse_Foreach {
+  ) extends Iterator[Event] {
 
-  private var queue = new Queue[Event]
-  private var pendings: List[Pending] = Nil
+  private val queue = new Queue[Event]
+  private var pendings = List.empty[Pending]
   @volatile private var is_complete = false
 
   protected def this(id: Transaction.Id) {
     this(id, None)
   }
 
-  def completed_? : Boolean =
+  def has_completed: Boolean =
     is_complete
 
   def add_events(events: List[Event]) = synchronized {
-    if (!completed_?) {
+    if (!has_completed) {
       queue ++= events
     } else {
       handle_add_events_after_complete(events)
@@ -54,7 +53,7 @@ abstract class Transaction(
   }
 
   def add_pending(pending: Pending) = synchronized {
-    if (!completed_?) {
+    if (!has_completed) {
       pendings = pending :: pendings
     } else {
       handle_add_pending_after_complete(pending)
@@ -62,7 +61,7 @@ abstract class Transaction(
   }
 
   def complete: Boolean = synchronized {
-    if (!completed_? && hasNext()) {
+    if (!has_completed && hasNext()) {
       false
     } else {
       is_complete = true
@@ -78,40 +77,37 @@ abstract class Transaction(
     queue.dequeue
   }
 
-  override
-  def equals(other: Any): Boolean =
+  override def equals(other: Any): Boolean =
     other match {
       case that: Transaction => this.id == that.id
       case _ => false
     }
 
-  override
-  def hashCode: Int =
+  override def hashCode: Int =
     id.hashCode
 
   def <(other: Transaction): Boolean =
     id < other.id
 
   // is `this` an ancestor of other?
-  def ancestor_of_?(other: Transaction): Boolean = {
-    id == other.id ||
-    (other.parent match {
-      case Some(p) => p.ancestor_of_?(other)
-      case None => false
-    })
-  }
+  def is_ancestor_of(other: Transaction): Boolean =
+    id == other.id || {
+      other.parent match {
+        case Some(p) => p.is_ancestor_of(other)
+        case None => false
+      }
+    }
 
   def close {
     if (!pendings.isEmpty) {
       val shadow = create_shadow
       // release in reverse order (first, to those waiting longest)
-      reverse_foreach((p: Pending) => p.release(this))(pendings)
+      pendings.reverse.map { _.release(this) }
       shadow.execute(shadow)
     }
   }
 
-  override
-  def toString: String = {
+  override def toString: String = {
     def count_parents(tx: Transaction, num: Int): String = {
       parent match {
         case None => fmt(num)
@@ -126,7 +122,7 @@ abstract class Transaction(
     count_parents(this, 0)
   }
 
-  protected def create_shadow: Transaction = {
+  protected def create_shadow: Transaction =
     new Transaction(id, Some(this)) {
       // (shadow.execute`s in the same manner as this)
       protected val execute = Transaction.this.execute
@@ -139,7 +135,6 @@ abstract class Transaction(
         Transaction.this.handle_add_pending_after_complete(pending)
       }
     }
-  }
 
   protected val execute: Transaction => Unit
 
@@ -163,10 +158,11 @@ object Nil_Transaction
 import java.util.concurrent.atomic.AtomicLong
 
 abstract class Transaction_Sequencer {
+
   def next: Transaction
 
   protected def next_id: Transaction.Id =
     id_gen.getAndIncrement()
 
-  private var id_gen = new AtomicLong(Transaction.INITIALIZATION_ID);
+  private val id_gen = new AtomicLong(Transaction.INITIALIZATION_ID)
 }

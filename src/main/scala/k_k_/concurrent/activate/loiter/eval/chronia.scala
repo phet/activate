@@ -9,14 +9,16 @@
  *   http://www.opensource.org/licenses/artistic-license-2.0.php
  *
 */
-package k_k_.concurrent.activate.loiter.eval
+package k_k_.concurrent.activate.loiter
+
+package eval {
 
 import k_k_.concurrent.activate.core.Event
 
 
 // for synchronous evaluation
 trait Event_Record {
-  def confirmed_?(event: Event): Boolean
+  def is_confirmed(event: Event): Boolean
 }
 
 
@@ -46,28 +48,28 @@ class Sync(
           None
 
         case (Existential_Guard(event), true) =>
-          if (record.confirmed_?(event)) {
+          if (record.is_confirmed(event)) {
             throw Disproven_Exception
           } else {
             Some(Negated_Existential_Guard(event))
           }
 
         case (Existential_Guard(event), false) =>
-          if (record.confirmed_?(event)) {
+          if (record.is_confirmed(event)) {
             None
           } else {
             Some(Existential_Guard(event))
           }
 
         case (Negated_Existential_Guard(event), true) =>
-          if (record.confirmed_?(event)) {
+          if (record.is_confirmed(event)) {
             None
           } else {
             Some(Existential_Guard(event))
           }
 
         case (Negated_Existential_Guard(event), false) =>
-          if (record.confirmed_?(event)) {
+          if (record.is_confirmed(event)) {
             throw Disproven_Exception
           } else {
             Some(Negated_Existential_Guard(event))
@@ -255,4 +257,6 @@ class Async(
     override def indelibly_decided_? : Boolean =
       false
   }
+}
+
 }

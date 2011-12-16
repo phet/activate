@@ -15,9 +15,7 @@ import k_k_.concurrent.activate.core.eval._
 import k_k_.concurrent.activate.loiter._
 import k_k_.concurrent.activate.loiter.eval._
 
-import java.util.concurrent.{ConcurrentHashMap,
-                             Executors,
-                             ExecutorService}
+import java.util.concurrent.{ConcurrentHashMap, Executors, ExecutorService}
 
 
 class Event {
@@ -26,6 +24,7 @@ class Event {
 
 sealed abstract class Promissory_Event[T]
     extends Event {
+
   @volatile private var result: Option[T] = None
 
   def apply(value: T): Event
@@ -61,6 +60,7 @@ object Would_Deadlock extends Would_Deadlock
 
 
 object Activarium {
+
   def Val_Event[T]: Promissory_Event[T] =
     new Protected_Promissory_Event[T]
 
@@ -151,8 +151,8 @@ class Activarium {
 
   private val sync =
     new Sync(new Event_Record {
-      def confirmed_?(event: Event): Boolean =
-        Activarium.this.confirmed_?(true)(event)
+      def is_confirmed(event: Event): Boolean =
+        Activarium.this.is_confirmed(true)(event)
     })
 
 
@@ -163,13 +163,11 @@ class Activarium {
   // Executor for internal management of events, guards, etc.
   private val evaluation_executor = create_evaluation_executor
 
-  final
-  def submit(as: List[Activatom]) {
+  final def submit(as: List[Activatom]) {
     as foreach (do_submit _)
   }
 
-  final
-  def submit(a: Activatom) {
+  final def submit(a: Activatom) {
     do_submit(a)
   }
 
@@ -257,12 +255,12 @@ java.lang.NoSuchMethodError: submit
 	    def trigger = wait_obj synchronized { wait_obj notify }
           }
 	  wait_obj synchronized {
-	    while (!confirmed_?(false)(satisfied) &&
-		   !confirmed_?(false)(not_satisfiable)) {
+	    while (!is_confirmed(false)(satisfied) &&
+		   !is_confirmed(false)(not_satisfiable)) {
 	      wait_obj.wait(max_ms) //??????
 	    }
 	  }
-	  confirmed_?(false)(satisfied) || { 
+	  is_confirmed(false)(satisfied) || { 
             throw Would_Deadlock
           }
 	}
@@ -320,10 +318,10 @@ java.lang.NoSuchMethodError: submit
   }
 
   // req_tx_complete_? ensures isolation by only considering an event
-  // confirmed_? once its transaction has completed
-  private def confirmed_?(req_tx_complete_? : Boolean)(event: Event): Boolean =
+  // `is_confirmed` once its transaction has completed
+  private def is_confirmed(req_tx_complete_? : Boolean)(event: Event): Boolean =
     event_register.get(event) match {
-      case Event_Confirmation(tx) if (!req_tx_complete_? || tx.completed_?) =>
+      case Event_Confirmation(tx) if (!req_tx_complete_? || tx.has_completed) =>
                 true
       case _ => false
     }
@@ -373,7 +371,7 @@ java.lang.NoSuchMethodError: submit
   }
 
   private def activate_!(activities: List[Activity]) {
-    for (val activity <- activities) {
+    for { activity <- activities } {
       activity_executor.execute(new Runnable {
         def run() {
           try {
@@ -400,7 +398,7 @@ java.lang.NoSuchMethodError: submit
   5. decide whether to be less eager in activating a tentative immediately after transaction close.  ???what if it gets queued and does not run for some time, but in the meanwhile, would have been deemed eternally_false?????  in addition, would there be any guarantee not upheld if it were allowed to become eternally_true, instead of merely proceeding from tentative????
   6. ???what if a Promissory_Event is affirmed without a value???
   7. create a type in which Val_Event may be wrapped so those holding it may only wait, but not actually invoke it!!!
-**/
+*/
 
   protected
   class Activatable(
@@ -461,7 +459,7 @@ java.lang.NoSuchMethodError: submit
     private def proceed_with_activation_?(tx: Transaction): Boolean =
       synchronized {
         valid_tentative_tx != Nil_Transaction &&
-        valid_tentative_tx.ancestor_of_?(tx) &&
+        valid_tentative_tx.is_ancestor_of(tx) &&
         claim_singular_determination_?
     }
 

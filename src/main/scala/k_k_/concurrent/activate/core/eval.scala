@@ -11,7 +11,6 @@
 */
 package k_k_.concurrent.activate.core.eval
 
-import k_k_.concurrent.activate.util.Reverse_Foreach
 import k_k_.concurrent.activate.loiter.eval.Event_Observer
 import k_k_.concurrent.activate.loiter.eval.Transaction
 
@@ -20,7 +19,7 @@ sealed abstract class Event_Exposition
 
 case class Event_Expectation(
   observers: List[Event_Observer]
-  ) extends Event_Exposition with Reverse_Foreach {
+  ) extends Event_Exposition {
 
   def this(observer: Event_Observer) =
     this(List(observer))
@@ -28,13 +27,12 @@ case class Event_Expectation(
   def add_observer(observer: Event_Observer) =
     new Event_Expectation(observer :: observers)
 
-  def fulfill(tx: Transaction) = {
+  def fulfill(tx: Transaction) {
     // announce existence in reverse order (first, to those waiting longest)
-    reverse_foreach { (obs: Event_Observer) => obs.exists(tx) } (observers)
+    observers.reverse.map { _.exists(tx) }
   }
 }
 
 case class Event_Confirmation(
   tx: Transaction
   ) extends Event_Exposition
-

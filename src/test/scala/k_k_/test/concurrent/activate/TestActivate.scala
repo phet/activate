@@ -11,44 +11,122 @@
 */
 package k_k_.test.concurrent.activate
 
+import org.scalatest.FunSuite
+import org.scalatest.matchers.ShouldMatchers
+
 import k_k_.concurrent.activate.core._
 import k_k_.concurrent.activate.core.Activarium._
 import k_k_.concurrent.activate.loiter._
 import k_k_.concurrent.activate.loiter.Guard._
 
-import org.junit._
-import Assert._
 
+@org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
+class TestActivate extends FunSuite with ShouldMatchers {
 
-@Test
-class TestActivate {
+  def log(s: String) {
+    System.err.println(s)
+  }
+
 
   // val env = new Activarium
   val @@ = new Activarium
 
-  val e1 = new Event
-  val e2 = new Event
 
-  val guard = e1 && !e2
+  test("constructing activatoms") {
 
-  val work1 = new Activatom(guard, Nil, Nil, () => println("Wee! This is fun!"))
-  val work2 = new Activatom(guard, () => println("Tell me about it!"))
+    val e1, e2 = new Event
 
-//  @@.submit(work1)
-//  @@.submit(work2)
+    val guard = e1 && !e2
 
-  println("affirm in 2s!")
-  Thread.sleep(2000)
-//  @@.affirm(e1);
-  println("affirmed!")
+    val work1 = new Activatom(guard, Nil, Nil, () => log("Wee! This is fun!"))
+    val work2 = new Activatom(guard, () => log("Tell me about it!"))
+
+  //  @@.submit(work1)
+  //  @@.submit(work2)
+
+    log("affirm in 2s!")
+    Thread.sleep(2000)
+  //  @@.affirm(e1);
+    log("affirmed!")
+  }
+
+  test("pythagorean") {
+
+    // pythag((c: Int) => log("(cont) pythag(3,4) = (" + c + ")"))(3, 4)
+
+  //  val result = pythag(3, 4)
+  //  @@.submit(result ?+>
+  //             log("(promised) pythag(3,4) = (" + ?(result) + ")"))
+
+
+   val pythag_result = pythag(3, 4)
+   @@.submit(pythag_result ?+> log("pythag(3, 4) = (" + ?(pythag_result) + ")"))
+  }
+
+  test("other stuff!") {
+
+    print_factorial(5)
+    print_factorial(15)
+
+
+    // val stop = Exec_Policy.eternally(daemon)
+    val stop = Exec_Policy.async_eternally(async_daemon)
+
+    Thread.sleep(5000)
+    log("=====affirming stop=====")
+    @@.affirm(stop)
+    Thread.sleep(5000)
+
+
+    val array = new Array[Int](8)
+    for { i <- 0 until 8 } {
+      array(i) = i
+    }
+    log("mapping")
+    val map_result = parallel_map(array)((x) => x + x)
+    @@.submit(map_result ?+>
+               log("map(" + array.mkString(", ") + ") = (" + ?(map_result).mkString(", ") + ")"))
+
+
+
+    def identity[T](x: T) = x
+
+    val (start, defer_result) = defer((x: Int) => x)(42)
+    // val (start, defer_result) = defer((x: Int) => x, 42)
+    // val (start, defer_result) = defer(identity[Int] _)(42)
+    @@.submit(defer_result ?+>
+               log("defer(1) result is (" + ?(defer_result) + ")"))
+    log("waiting .5s before func apply")
+    Thread.sleep(500)
+    @@.affirm(start)
+
+    val (start2, defer_result2) = defer((x: Int, y: Int) => x + y)(42, -42)
+    @@.submit(defer_result2 ?+>
+               log("defer(2) result is (" + ?(defer_result2) + ")"))
+    log("waiting .5s before func apply")
+    Thread.sleep(500)
+    @@.affirm(start2)
+
+
+    val async_result = async((x: Int) => x)(42)
+    @@.submit(async_result ?+>
+               log("async(1) result is (" + ?(async_result) + ")"))
+
+    val async_result2 = async((x: Int, y: Int) => x + y)(42, -42)
+    @@.submit(async_result2 ?+>
+               log("async(2) result is (" + ?(async_result2) + ")"))
+
+
+    assert(true)
+  }
+
 
   def pythag(a: Int, b: Int): Promissory_Event[Int] = {
-    val (a_result, b_result, answer) = (Val_Event[Int], Val_Event[Int],
-                                        Val_Event[Int])
+    val a_result, b_result, answer = Val_Event[Int]
     @@.submit(+> { @@.affirm(a_result(a*a)) } ::
                +> { @@.affirm(b_result(b*b)) } ::
                (a_result && b_result) ?+> (
-                  @@.affirm(answer(Math.sqrt(?(a_result) + ?(b_result))))
+                  @@.affirm(answer(math.sqrt(?(a_result) + ?(b_result)).toInt))
                  ) :: Nil)
     answer
   }
@@ -144,31 +222,16 @@ class TestActivate {
   }
 */
 
-  // pythag((c: Int) => println("(cont) pythag(3,4) == (" + c + ")"))(3, 4)
-
-//  val result = pythag(3, 4)
-//  @@.submit(result ?+>
-//             println("(promised) pythag(3,4) == (" + ?(result) + ")"))
-
-
- val pythag_result = pythag(3, 4)
-    @@.submit(pythag_result ?+>
-               println("pythag(3, 4) == (" + ?(pythag_result) + ")"))
-
-
   def print_factorial(n: Int) {
     val fac_result = factorial(n)
     @@.submit(fac_result ?+>
-               println("factorial(" + n + ") == (" + ?(fac_result) + ")"))
+               log("factorial(" + n + ") = (" + ?(fac_result) + ")"))
   }
 
-  print_factorial(5)
-  print_factorial(15)
-
-
-  import scala.util.Random
 
   def async_daemon(stop: Event): Event = {
+    import scala.util.Random
+
     val failed = new Event
     val rand = new Random
     def loop {
@@ -176,10 +239,10 @@ class TestActivate {
                    try {
                      val v = rand.nextInt(10)
                      if (v % 5 == 0) {
-                       println("dying on " + v)
+                       log("dying on " + v)
                        throw new Exception("aargh!")
                      } else {
-                       println("generated " + v)
+                       log("generated " + v)
                      }
                      Thread.sleep(500)
                      loop
@@ -198,10 +261,10 @@ class TestActivate {
     while (true) {
       val v = rand.nextInt(10)
       if (v % 5 == 0) {
-        println("dying on " + v)
+        log("dying on " + v)
         throw new Exception("aargh!")
       } else {
-        println("generated " + v)
+        log("generated " + v)
       }
       Thread.sleep(500)
     }
@@ -212,7 +275,7 @@ class TestActivate {
       val stop = new Event
       def rerun(n: Int) {
         val failed = new Event
-        println("rerun")
+        log("rerun")
         @@.submit(~> { () =>
                        try {
                          task(stop)
@@ -237,19 +300,11 @@ class TestActivate {
     }
   }
 
-  // val stop = Exec_Policy.eternally(daemon)
-  val stop = Exec_Policy.async_eternally(async_daemon)
-
-  Thread.sleep(5000)
-  println("=====affirming stop=====")
-  @@.affirm(stop)
-  Thread.sleep(5000)
-
-  def parallel_map[T](arr: Array[T])(f: T => T): Promissory_Event[Array[T]] = {
+  def parallel_map[T : ClassManifest](arr: Array[T])(f: T => T): Promissory_Event[Array[T]] = {
     val result_event = Val_Event[Array[T]]
     val result = new Array[T](arr.length)
     var result_ready: Guard = Non_Guard
-    for (val i <- 0 until arr.length) {
+    for { i <- 0 until arr.length } {
       val index_updated = new Event
       result_ready &&= index_updated
       @@.submit(~> { () =>
@@ -260,15 +315,6 @@ class TestActivate {
     @@.submit(result_ready ?+> @@.affirm(result_event(result)))
     result_event
   }
-
-  val array = new Array[Int](8)
-  for (val i <- 0 until 8) {
-    array(i) = i
-  }
-  println("mapping")
-  val map_result = parallel_map(array)((x) => x + x)
-  @@.submit(map_result ?+>
-             println("map(" + array.toString + ") == (" + ?(map_result) + ")"))
 
 
   object defer {
@@ -301,40 +347,4 @@ class TestActivate {
       result
     }
   }
-
-
-  def identity[T](x: T) = x
-
-  val (start, defer_result) = defer((x: Int) => x)(42)
-  // val (start, defer_result) = defer((x: Int) => x, 42)
-  // val (start, defer_result) = defer(identity[Int] _)(42)
-  @@.submit(defer_result ?+>
-             println("defer(1) result is (" + ?(defer_result) + ")"))
-  println("waiting .5s before func apply")
-  Thread.sleep(500)
-  @@.affirm(start)
-
-  val (start2, defer_result2) = defer((x: Int, y: Int) => x + y)(42, -42)
-  @@.submit(defer_result2 ?+>
-             println("defer(2) result is (" + ?(defer_result2) + ")"))
-  println("waiting .5s before func apply")
-  Thread.sleep(500)
-  @@.affirm(start2)
-
-
-  val async_result = async((x: Int) => x)(42)
-  @@.submit(async_result ?+>
-             println("async(1) result is (" + ?(async_result) + ")"))
-
-  val async_result2 = async((x: Int, y: Int) => x + y)(42, -42)
-  @@.submit(async_result2 ?+>
-             println("async(2) result is (" + ?(async_result2) + ")"))
-
-
-  @Test
-  def testOK() = assertTrue(true)
-
-//  @Test
-//  def testKO() = assertTrue(false)
-
 }
