@@ -41,10 +41,10 @@ class Sync(
   def calc_undetermined(guard: Guard): Option[Guard] = {
     def preorder(guard: Guard, negate_? : Boolean): Option[Guard] = {
       (guard, negate_?) match {
-        case (Non_Guard, true) =>
+        case (Null_Guard, true) =>
           throw Disproven_Exception
 
-        case (Non_Guard, false) =>
+        case (Null_Guard, false) =>
           None
 
         case (Existential_Guard(event), true) =>
@@ -128,11 +128,11 @@ class Async(
     def preorder(guard: Guard, observer: Guard_Observer, negate_? : Boolean):
         Boolean = {
       (guard, negate_?) match {
-        case (Non_Guard, true) =>
+        case (Null_Guard, true) =>
           observer.indelibly_false(observatory.creation_tx)
           true
 
-        case (Non_Guard, false) =>
+        case (Null_Guard, false) =>
           observer.indelibly_true(observatory.creation_tx)
           true
 

@@ -303,7 +303,7 @@ class TestActivate extends FunSuite with ShouldMatchers {
   def parallel_map[T : ClassManifest](arr: Array[T])(f: T => T): Promissory_Event[Array[T]] = {
     val result_event = Val_Event[Array[T]]
     val result = new Array[T](arr.length)
-    var result_ready: Guard = Non_Guard
+    var result_ready: Guard = Null_Guard
     for { i <- 0 until arr.length } {
       val index_updated = new Event
       result_ready &&= index_updated

@@ -15,25 +15,24 @@ import k_k_.concurrent.activate.core.{Event, Activity, Activatom}
 
 
 object Guard {
-  implicit def Event2Guard(event: Event): Guard =
+  implicit def fromEvent(event: Event): Guard =
     Existential_Guard(event)
 }
 
 sealed abstract class Guard {
-  import Guard._
 
-  def unary_!        = Negated_Guard(this)
-  def &&(lhs: Guard) = Conjoined_Guard(this, lhs)
-  def ||(lhs: Guard) = Disjoined_Guard(this, lhs)
+  def unary_!       : Guard = Negated_Guard(this)
+  def &&(lhs: Guard): Guard = Conjoined_Guard(this, lhs)
+  def ||(lhs: Guard): Guard = Disjoined_Guard(this, lhs)
 
-  def ^ (lhs: Guard) = Disjoined_Guard((this && !lhs), (!this && lhs))
+  def ^ (lhs: Guard): Guard = Disjoined_Guard((this && !lhs), (!this && lhs))
  
   def ?+>(a: Activity): Activatom =
     new Activatom(this, a)
  
   override def toString: String =
     this match {
-      case Non_Guard                        =>       "True"
+      case Null_Guard                       =>       "True"
       case Existential_Guard(event)         =>       event.toString
       case Negated_Existential_Guard(event) => "!" + event.toString
       case Negated_Guard(expr)              => "!(" + expr + ")"
@@ -43,16 +42,18 @@ sealed abstract class Guard {
 }
 
 
-case object Non_Guard
+case object Null_Guard
     extends Guard
 
 case class Existential_Guard(event: Event)
     extends Guard {
-  override def unary_! = Negated_Guard(event)
+  override def unary_! : Guard = Negated_Existential_Guard(event)
 }
 
 case class Negated_Existential_Guard(event: Event)
-    extends Guard
+    extends Guard {
+  override def unary_! : Guard = Existential_Guard(event)
+}
 
 case class Conjoined_Guard(left: Guard, right: Guard)
     extends Guard

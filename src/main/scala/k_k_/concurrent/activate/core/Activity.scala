@@ -38,7 +38,7 @@ object Activity {
 
 object +> {
   def apply(f: => Unit): Activatom =
-    new Activatom(Non_Guard,
+    new Activatom(Null_Guard,
                   new Activity {
                     def apply() = f
                   }
@@ -47,7 +47,7 @@ object +> {
 
 object ~> {
   def apply(f: () => Unit): Activatom =
-    new Activatom(Non_Guard,
+    new Activatom(Null_Guard,
                   new Activity {
                     def apply() = f()
                   }
@@ -57,10 +57,10 @@ object ~> {
 /*???
 object Activatom {
   implicit def activity2activatom(a: Activity): Activatom =
-    new Activatom(Non_Guard, a)
+    new Activatom(Null_Guard, a)
 
   implicit def expr2activatom(f: => Unit): Activatom =
-    new Activatom(Non_Guard, new Activity {
+    new Activatom(Null_Guard, new Activity {
       def apply() = f
     }
                 )
@@ -83,7 +83,7 @@ class Activatom(
     this(g, Nil, Nil, List(activity))
 
 //  def this(activity: Activity) =
-//    this(Non_Guard, Nil, Nil, List(activity))
+//    this(Null_Guard, Nil, Nil, List(activity))
 
   //??????????
   // error: double definition:

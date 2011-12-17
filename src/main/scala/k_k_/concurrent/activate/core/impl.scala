@@ -15,6 +15,8 @@ import k_k_.concurrent.activate.core.eval._
 import k_k_.concurrent.activate.loiter._
 import k_k_.concurrent.activate.loiter.eval._
 
+import scala.util.control.Exception.handling
+
 import java.util.concurrent.{ConcurrentHashMap, Executors, ExecutorService}
 
 
@@ -103,9 +105,9 @@ class Activarium {
 
   import Activarium.Fulfillable_Promissory_Event
 
-  private val tx_sequencer = new Transaction_Sequencer {
-    def next: Transaction =
-      new Transaction(next_id) {
+  private val new_transaction: () => Transaction = {
+    val tx_iterator = Transaction.create_id_iterator map { id =>
+      new Transaction(id) {
         protected val execute = elaborate _ // Activarium.elaborate def'd below
 
         protected def handle_add_events_after_complete(events: List[Event]) {
@@ -113,33 +115,30 @@ class Activarium {
           shadow.add_events(events)
           evaluation_executor.execute(new Runnable {
             def run() {
-              try {
-                elaborate(shadow)
-              } catch {
-                case e: Throwable => println("Throwable: " + e)
-              }
+              handling(classOf[Throwable]) by { e =>
+                println("Throwable: " + e.getStackTraceString)
+              } apply elaborate(shadow)
             }
           })
         }
 
-        protected def handle_add_pending_after_complete(pending: Pending) {
+        protected def handle_add_deferred_after_complete(deferred: Deferred) {
           val shadow = create_shadow
-          shadow.add_pending(pending)
+          shadow.add_deferred(deferred)
           evaluation_executor.execute(new Runnable {
             def run() {
-              try {
-                elaborate(shadow)
-              } catch {
-                case e: Throwable => println("Throwable: " + e)
-              }
+              handling(classOf[Throwable]) by { e =>
+                println("Throwable: " + e.getStackTraceString)
+              } apply elaborate(shadow)
             }
           })
         }
       }
+    }
+    () => tx_iterator.next()
   }
 
-  private val init_tx = tx_sequencer.next
-  init_tx.complete
+  private val init_tx = new_transaction()
 
   private val async =
     new Async(new Event_Observatory {
@@ -218,7 +217,7 @@ java.lang.NoSuchMethodError: submit
     evaluation_executor.execute(new Runnable {
       def run() {
         try {
-          val tx = tx_sequencer.next
+          val tx = new_transaction()
           tx.add_events(scrubbed_events)
           elaborate(tx)
         } catch {
@@ -270,18 +269,16 @@ java.lang.NoSuchMethodError: submit
     }
   }
 
-  protected def create_activity_executor: ExecutorService = {
+  protected def create_activity_executor: ExecutorService =
     Executors.newCachedThreadPool()
-  }
 
-  protected def create_evaluation_executor: ExecutorService = {
+  protected def create_evaluation_executor: ExecutorService =
     Executors.newCachedThreadPool()
-  }
 
   private def elaborate(tx: Transaction) {
     val confirmation = Event_Confirmation(tx) // reuse for all Event`s
-    while (!tx.complete) {
-      val event = tx.next
+    while (!tx.has_events) {
+      val event = tx.take_event()
       event_register.putIfAbsent(event, confirmation) match {
         // confirmed by another transaction
         case Event_Confirmation(other_tx) =>
@@ -295,7 +292,7 @@ java.lang.NoSuchMethodError: submit
 	case _ => ()
       }
     }
-    tx.close
+    tx.fulfill_deferred()
   }
 
   private def fulfill_expectation(event: Event, expect: Event_Expectation,
@@ -321,7 +318,7 @@ java.lang.NoSuchMethodError: submit
   // `is_confirmed` once its transaction has completed
   private def is_confirmed(req_tx_complete_? : Boolean)(event: Event): Boolean =
     event_register.get(event) match {
-      case Event_Confirmation(tx) if (!req_tx_complete_? || tx.has_completed) =>
+      case Event_Confirmation(tx) if (!req_tx_complete_? || tx.has_events) =>
                 true
       case _ => false
     }
@@ -428,8 +425,8 @@ java.lang.NoSuchMethodError: submit
 	    }
           } else {
             set_tentative_tx(tx)
-            tx.add_pending(new Pending {
-              def release(tx: Transaction) {
+            tx.add_deferred(new Deferred {
+              def fulfill(tx: Transaction) {
                 Activatable.this.attempt_activation(tx)
               }
             })
