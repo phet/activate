@@ -15,210 +15,174 @@ package eval {
 
 import k_k_.concurrent.activate.core.Event
 
+import scala.util.control.Exception.{catching, handling}
+
 
 // for synchronous evaluation
-trait Event_Record {
+object Event_History {
+
+  def apply(_is_confirmed: Event => Boolean) =
+    new Event_History {
+      def is_confirmed(event: Event) =
+        _is_confirmed(event)
+    }
+}
+
+trait Event_History {
   def is_confirmed(event: Event): Boolean
 }
 
 
+object Event_Observatory {
+
+  def apply(creation_tx: Transaction)
+        (_begin_monitoring: (Event, Event_Observer) => Boolean) =
+    new Event_Observatory {
+      def begin_monitoring(event: Event, observer: Event_Observer): Boolean =
+        _begin_monitoring(event, observer)
+
+      val origin_tx = creation_tx
+    }
+}
+
 // for asynchronous evaluation
 trait Event_Observatory {
-  def monitor(event: Event, observer: Event_Observer): Boolean
+  def begin_monitoring(event: Event, observer: Event_Observer): Boolean
 
-  val creation_tx: Transaction
+  val origin_tx: Transaction
 }
 
 
-// internal multi-level return; stacktrace unimportant, therefore 'object' ok
-case object Disproven_Exception extends RuntimeException
+object Synchronous {
 
+  // internal multi-level return; stacktrace unimportant, therefore 'object' ok
+  class Contradiction extends RuntimeException
+  case object Contradiction extends Contradiction
+}
 
-class Sync(
-  record: Event_Record
-  ) {
+class Synchronous(history: Event_History) {
 
+  /**
+   * @return simplified `Guard` of what still undetermined, None iff fully det.
+   * @throws Contradiction iff determined `Guard` unable to be satisfied
+   */
   def calc_undetermined(guard: Guard): Option[Guard] = {
-    def preorder(guard: Guard, negate_? : Boolean): Option[Guard] = {
-      (guard, negate_?) match {
-        case (Null_Guard, true) =>
-          throw Disproven_Exception
+    import Synchronous.Contradiction
 
+    def preorder(guard: Guard, negate: Boolean): Option[Guard] = {
+      (guard, negate) match {
         case (Null_Guard, false) =>
           None
 
-        case (Existential_Guard(event), true) =>
-          if (record.is_confirmed(event)) {
-            throw Disproven_Exception
-          } else {
-            Some(Negated_Existential_Guard(event))
-          }
+        case (Null_Guard, true) =>
+          throw Contradiction
 
-        case (Existential_Guard(event), false) =>
-          if (record.is_confirmed(event)) {
-            None
-          } else {
-            Some(Existential_Guard(event))
-          }
+        case (g @ Existential_Guard(event), false) =>
+          if (history.is_confirmed(event)) None
+          else                             Some(g)
+
+        case (Existential_Guard(evnt), true) =>
+          if (history.is_confirmed(evnt)) throw Contradiction
+          else                            Some(Negated_Existential_Guard(evnt))
+
+        case (g @ Negated_Existential_Guard(event), false) =>
+          if (history.is_confirmed(event)) throw Contradiction
+          else                             Some(g)
 
         case (Negated_Existential_Guard(event), true) =>
-          if (record.is_confirmed(event)) {
-            None
-          } else {
-            Some(Existential_Guard(event))
-          }
+          if (history.is_confirmed(event)) None
+          else                             Some(Existential_Guard(event))
 
-        case (Negated_Existential_Guard(event), false) =>
-          if (record.is_confirmed(event)) {
-            throw Disproven_Exception
-          } else {
-            Some(Negated_Existential_Guard(event))
-          }
 
-        case (Conjoined_Guard(left, right), _) =>
-          val lhs_undetermined = preorder(left, negate_?)
-          val rhs_undetermined = preorder(right, negate_?)
+        // rewrite in Negated Normal Form by application of DeMorgan's Law:
+        case (Negated_Guard(Conjoined_Guard(l, r)), _) =>
+          preorder(Disjoined_Guard(l, r), !negate)
+
+        case (Negated_Guard(Disjoined_Guard(l, r)), _) =>
+          preorder(Conjoined_Guard(l, r), !negate)
+
+        case (Negated_Guard(expr), _) =>
+          preorder(expr, !negate)
+
+
+        case (Conjoined_Guard(l, r), _) =>
+          val lhs_undetermined = preorder(l, negate)
+          val rhs_undetermined = preorder(r, negate)
           (lhs_undetermined, rhs_undetermined) match {
+            case (None, None)           => None
             case (Some(lhs), Some(rhs)) => Some(Conjoined_Guard(lhs, rhs))
             case (Some(_), None)        => lhs_undetermined
             case (None, Some(_))        => rhs_undetermined
-            case (None, None)           => None
           }
 
-        case (Disjoined_Guard(left, right), _) =>
-          try {
-            val lhs_undetermined = preorder(left, negate_?)
-            lhs_undetermined match {
-              case None => None // disjunction fully deter. once either side is
-              case Some(lhs) =>
-                try {
-                  preorder(right, negate_?) match {
-                    case None => None // disjunction deter. once either side is
-                    case Some(rhs) => Some(Disjoined_Guard(lhs, rhs))
-                  }
-                } catch {
-                  case Disproven_Exception => lhs_undetermined
+        case (Disjoined_Guard(l, r), _) =>
+          // short-circuit: disjunction fully determined once either side is
+          catching(classOf[Contradiction]) either preorder(l, negate) match {
+            case Left(contradiction) =>
+              preorder(r, negate) // r Guard will now determine all
+            case Right(lhs_undetermined) =>
+              handling(classOf[Contradiction]) by { _ =>
+                lhs_undetermined // l Guard must determine all
+              } apply {
+                for {
+                  lhs <- lhs_undetermined
+                  rhs <- preorder(r, negate)
+                } yield {
+                  Disjoined_Guard(lhs, rhs)
                 }
+              }
+          }
+        /******** equivalent formulation:
+          try {
+            // map past None since disjunction fully deter. once either side is
+            preorder(l, negate) flatMap { lhs =>
+              try {
+                preorder(r, negate) map { rhs =>
+                  Disjoined_Guard(lhs, rhs)
+                }
+              } catch {
+                case Contradiction => Some(lhs)
+              }
             }
           } catch {
-            case Disproven_Exception => preorder(right, negate_?)
+            case Contradiction => preorder(r, negate)
           }
-
-        // convert to Negated Normal Form by application of DeMorgan's Law:
-        case (Negated_Guard(Conjoined_Guard(left, right)), _) =>
-          preorder(Disjoined_Guard(left, right), !negate_?)
-
-        case (Negated_Guard(Disjoined_Guard(left, right)), _) =>
-          preorder(Conjoined_Guard(left, right), !negate_?)
-
-        case (Negated_Guard(expr), _) =>
-          preorder(expr, !negate_?)
+         */
       }
     }
+
     preorder(guard, false)
   }
 }
 
 
-class Async(
-  observatory: Event_Observatory
-  ) {
+object Asynchronous {
 
-  def evaluate(guard: Guard, observer: Guard_Observer) {
-    def preorder(guard: Guard, observer: Guard_Observer, negate_? : Boolean):
-        Boolean = {
-      (guard, negate_?) match {
-        case (Null_Guard, true) =>
-          observer.indelibly_false(observatory.creation_tx)
-          true
-
-        case (Null_Guard, false) =>
-          observer.indelibly_true(observatory.creation_tx)
-          true
-
-        case (Existential_Guard(event), true) =>
-          val evaluator = new Negated_Existential_Eval(observer)
-          observatory.monitor(event, evaluator.observer) ||
-          (evaluator.announce_non_existence && false)
-
-        case (Existential_Guard(event), false) =>
-          val evaluator = new Existential_Eval(observer)
-          observatory.monitor(event, evaluator.observer)
-
-        case (Negated_Existential_Guard(event), true) =>
-          val evaluator = new Existential_Eval(observer)
-          observatory.monitor(event, evaluator.observer)
-
-        case (Negated_Existential_Guard(event), false) =>
-          val evaluator = new Negated_Existential_Eval(observer)
-          observatory.monitor(event, evaluator.observer) ||
-          (evaluator.announce_non_existence && false)
-
-        case (Conjoined_Guard(left, right), _) =>
-          val evaluator = new Conjoined_Eval(observer)
-          val determination_made_? =
-            preorder(left, evaluator.lhs_observer, negate_?)
-          if (determination_made_? && evaluator.indelibly_decided_?)
-            true
-          else
-            preorder(right, evaluator.rhs_observer, negate_?)
-
-        case (Disjoined_Guard(left, right), _) =>
-          val evaluator = new Disjoined_Eval(observer)
-          val determination_made_? =
-            preorder(left, evaluator.lhs_observer, negate_?)
-          if (determination_made_? && evaluator.indelibly_decided_?)
-            true
-          else
-            preorder(right, evaluator.rhs_observer, negate_?)
-
-        // convert to Negated Normal Form by application of DeMorgan's Law:
-        case (Negated_Guard(Conjoined_Guard(left, right)), _) =>
-          preorder(Disjoined_Guard(left, right), observer, !negate_?)
-
-        case (Negated_Guard(Disjoined_Guard(left, right)), _) =>
-          preorder(Conjoined_Guard(left, right), observer, !negate_?)
-
-        case (Negated_Guard(expr), _) =>
-          preorder(expr, observer, !negate_?)
-      }
+  private class Existential_Eval(parent: Guard_Observer) {
+    val observer = Event_Observer { (tx: Transaction) =>
+      parent.indelibly_true(tx)
     }
-    preorder(guard, observer, false)
   }
 
-  protected class Existential_Eval(
-    parent: Guard_Observer
-    ) {
-    def observer =
-      new Event_Observer {
-        def exists(tx: Transaction) {
-          parent.indelibly_true(tx)
-        }
-      }
-  }
+  private class Negated_Existential_Eval(parent: Guard_Observer) {
+    val observer = Event_Observer { (tx: Transaction) =>
+      parent.indelibly_false(tx)
+    }
 
-  protected class Negated_Existential_Eval(
-    parent: Guard_Observer
-    ) {
-    def observer =
-      new Event_Observer {
-        def exists(tx: Transaction) {
-          parent.indelibly_false(tx)
-        }
-      }
-    def announce_non_existence: Boolean = {
-      parent.tentatively_true(observatory.creation_tx)
+    def announce_non_existence(tx: Transaction): Boolean = {
+      parent.tentatively_true(tx)
       false
     }
   }
 
-  protected abstract class Binary_Eval(
+  private abstract class Binary_Eval(
     parent: Guard_Observer
     ) {
 
     protected val sm: Dual_Guard_Observer
 
-    def indelibly_decided_? : Boolean =
+    //????why is this always false (in derived classes)?????
+    def is_indelibly_determined : Boolean =
       false
 
     def lhs_observer =
@@ -238,24 +202,96 @@ class Async(
       }
   }
 
-  protected class Conjoined_Eval(
+  private class Conjoined_Eval(
     parent: Guard_Observer
     ) extends Binary_Eval(parent) {
 
     protected val sm = new Conjoined_SM(parent)
 
-    override def indelibly_decided_? : Boolean =
+    override def is_indelibly_determined : Boolean =
       false
   }
 
-  protected class Disjoined_Eval(
+  private class Disjoined_Eval(
     parent: Guard_Observer
     ) extends Binary_Eval(parent) {
 
     protected val sm = new Disjoined_SM(parent)
 
-    override def indelibly_decided_? : Boolean =
+    override def is_indelibly_determined : Boolean =
       false
+  }
+}
+
+class Asynchronous(observatory: Event_Observatory) {
+
+  import Asynchronous._
+  import observatory.origin_tx
+
+  def evaluate(guard: Guard, observer: Guard_Observer) {
+    /** @return whether fully determined */
+    def preorder(guard: Guard, observer: Guard_Observer, negate: Boolean):
+        Boolean = {
+      (guard, negate) match {
+        case (Null_Guard, false) =>
+          observer.indelibly_true(origin_tx)
+          true
+
+        case (Null_Guard, true) =>
+          observer.indelibly_false(origin_tx)
+          true
+
+        case (Existential_Guard(event), false) =>
+          val evaluator = new Existential_Eval(observer)
+          observatory.begin_monitoring(event, evaluator.observer)
+
+        case (Existential_Guard(event), true) =>
+          val evaluator = new Negated_Existential_Eval(observer)
+          observatory.begin_monitoring(event, evaluator.observer) ||
+            evaluator.announce_non_existence(origin_tx)
+
+        case (Negated_Existential_Guard(event), false) =>
+          val evaluator = new Negated_Existential_Eval(observer)
+          observatory.begin_monitoring(event, evaluator.observer) ||
+            evaluator.announce_non_existence(origin_tx)
+
+        case (Negated_Existential_Guard(event), true) =>
+          val evaluator = new Existential_Eval(observer)
+          observatory.begin_monitoring(event, evaluator.observer)
+
+
+        // rewrite in Negated Normal Form by application of DeMorgan's Law:
+        case (Negated_Guard(Conjoined_Guard(l, r)), _) =>
+          preorder(Disjoined_Guard(l, r), observer, !negate)
+
+        case (Negated_Guard(Disjoined_Guard(l, r)), _) =>
+          preorder(Conjoined_Guard(l, r), observer, !negate)
+
+        case (Negated_Guard(expr), _) =>
+          preorder(expr, observer, !negate)
+
+
+        case (Conjoined_Guard(l, r), _) =>
+          val evaluator = new Conjoined_Eval(observer)
+          val is_determined = preorder(l, evaluator.lhs_observer, negate)
+          if (is_determined && evaluator.is_indelibly_determined)
+            true
+          else
+            preorder(r, evaluator.rhs_observer, negate)
+
+        case (Disjoined_Guard(l, r), _) =>
+          val evaluator = new Disjoined_Eval(observer)
+          val is_determined =
+            preorder(l, evaluator.lhs_observer, negate)
+          //???should this if/else really match that of Conjoined_Guard???
+          if (is_determined && evaluator.is_indelibly_determined)
+            true
+          else
+            preorder(r, evaluator.rhs_observer, negate)
+      }
+    }
+
+    preorder(guard, observer, false)
   }
 }
 

@@ -141,19 +141,11 @@ class Activarium {
   private val init_tx = new_transaction()
 
   private val async =
-    new Async(new Event_Observatory {
-      def monitor(event: Event, observer: Event_Observer): Boolean =
-        Activarium.this.monitor(event, observer)
-
-      val creation_tx = init_tx
-    })
+    //????should all async evaluation use the same initial tx???
+    new Asynchronous(Event_Observatory(init_tx) { Activarium.this.monitor _ })
 
   private val sync =
-    new Sync(new Event_Record {
-      def is_confirmed(event: Event): Boolean =
-        Activarium.this.is_confirmed(true)(event)
-    })
-
+    new Synchronous(Event_History { Activarium.this.is_confirmed(true) _ })
 
   private val event_register = new ConcurrentHashMap[Event, Event_Exposition]
 
@@ -260,7 +252,7 @@ java.lang.NoSuchMethodError: submit
 	}
       }
     } catch {
-      case Disproven_Exception => throw Would_Deadlock
+      case Synchronous.Contradiction => throw Would_Deadlock
     }
   }
 

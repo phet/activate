@@ -12,6 +12,16 @@
 package k_k_.concurrent.activate.loiter.eval
 
 
+object Event_Observer {
+
+  def apply(on_exists: Transaction => Unit) =
+    new Event_Observer {
+      def exists(tx: Transaction) {
+        on_exists(tx)
+      }
+    }
+}
+
 trait Event_Observer {
   def exists(tx: Transaction)
 }
