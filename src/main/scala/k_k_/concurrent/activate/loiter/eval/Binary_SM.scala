@@ -12,72 +12,80 @@
 package k_k_.concurrent.activate.loiter.eval
 
 
+protected object Binary_SM {
+
+  type Thunk = () => Unit
+
+  val Noop: Thunk = () => { }
+
+
+  trait State {
+    def dispatch_a__indelibly_true  (tx: Transaction): Thunk
+    def dispatch_a__indelibly_false (tx: Transaction): Thunk
+    def dispatch_a__tentatively_true(tx: Transaction): Thunk
+    def dispatch_a__indeterminate   (tx: Transaction): Thunk
+
+    def dispatch_b__indelibly_true  (tx: Transaction): Thunk
+    def dispatch_b__indelibly_false (tx: Transaction): Thunk
+    def dispatch_b__tentatively_true(tx: Transaction): Thunk
+    def dispatch_b__indeterminate   (tx: Transaction): Thunk
+  }
+
+  object Final_State extends State {
+    def dispatch_a__indelibly_true  (tx: Transaction): Thunk = Noop
+    def dispatch_a__indelibly_false (tx: Transaction): Thunk = Noop
+    def dispatch_a__tentatively_true(tx: Transaction): Thunk = Noop
+    def dispatch_a__indeterminate   (tx: Transaction): Thunk = Noop
+
+    def dispatch_b__indelibly_true  (tx: Transaction): Thunk = Noop
+    def dispatch_b__indelibly_false (tx: Transaction): Thunk = Noop
+    def dispatch_b__tentatively_true(tx: Transaction): Thunk = Noop
+    def dispatch_b__indeterminate   (tx: Transaction): Thunk = Noop
+  }
+}
+
 protected abstract class Binary_SM
     extends Dual_Guard_Observer {
 
-  protected type Thunk = () => Unit
-
-  protected trait State {
-    def dispatch_a__indelibly_true  (tx: Transaction): Option[Thunk]
-    def dispatch_a__indelibly_false (tx: Transaction): Option[Thunk]
-    def dispatch_a__tentatively_true(tx: Transaction): Option[Thunk]
-    def dispatch_a__indeterminate   (tx: Transaction): Option[Thunk]
-
-    def dispatch_b__indelibly_true  (tx: Transaction): Option[Thunk]
-    def dispatch_b__indelibly_false (tx: Transaction): Option[Thunk]
-    def dispatch_b__tentatively_true(tx: Transaction): Option[Thunk]
-    def dispatch_b__indeterminate   (tx: Transaction): Option[Thunk]
-  }
-
-  protected object Final_State extends State {
-    def dispatch_a__indelibly_true  (tx: Transaction): Option[Thunk] = None
-    def dispatch_a__indelibly_false (tx: Transaction): Option[Thunk] = None
-    def dispatch_a__tentatively_true(tx: Transaction): Option[Thunk] = None
-    def dispatch_a__indeterminate   (tx: Transaction): Option[Thunk] = None
-
-    def dispatch_b__indelibly_true  (tx: Transaction): Option[Thunk] = None
-    def dispatch_b__indelibly_false (tx: Transaction): Option[Thunk] = None
-    def dispatch_b__tentatively_true(tx: Transaction): Option[Thunk] = None
-    def dispatch_b__indeterminate   (tx: Transaction): Option[Thunk] = None
-  }
-
-  protected def START_STATE: State
+  import Binary_SM._
 
   protected var state = START_STATE
 
-  protected def error(): Option[Thunk] =
+
+  final def a__indelibly_true  (tx: Transaction) =
+    exec_event_dispatch { state.dispatch_a__indelibly_true(tx) }
+
+  final def a__indelibly_false (tx: Transaction) =
+    exec_event_dispatch { state.dispatch_a__indelibly_false(tx) }
+
+  final def a__tentatively_true(tx: Transaction) =
+    exec_event_dispatch { state.dispatch_a__tentatively_true(tx) }
+
+  final def a__indeterminate   (tx: Transaction) =
+    exec_event_dispatch { state.dispatch_a__indeterminate(tx) }
+
+
+  final def b__indelibly_true  (tx: Transaction) =
+    exec_event_dispatch { state.dispatch_b__indelibly_true(tx) }
+
+  final def b__indelibly_false (tx: Transaction) =
+    exec_event_dispatch { state.dispatch_b__indelibly_false(tx) }
+
+  final def b__tentatively_true(tx: Transaction) =
+    exec_event_dispatch { state.dispatch_b__tentatively_true(tx) }
+
+  final def b__indeterminate   (tx: Transaction) =
+    exec_event_dispatch { state.dispatch_b__indeterminate(tx) }
+
+
+  protected def START_STATE: State
+
+
+  protected final def fail() =
     throw new IllegalStateException()
 
-  private def exec_event_dispatch(event_dispatch: => Option[Thunk]) {
-    event_dispatch match {
-      case Some(notify) => notify()
-      case None =>
-    }
-  }
 
-  def a__indelibly_true  (tx: Transaction) = synchronized {
-    exec_event_dispatch { state.dispatch_a__indelibly_true(tx) }
-  }
-  def a__indelibly_false (tx: Transaction) = synchronized {
-    exec_event_dispatch { state.dispatch_a__indelibly_false(tx) }
-  }
-  def a__tentatively_true(tx: Transaction) = synchronized {
-    exec_event_dispatch { state.dispatch_a__tentatively_true(tx) }
-  }
-  def a__indeterminate   (tx: Transaction) = synchronized {
-    exec_event_dispatch { state.dispatch_a__indeterminate(tx) }
-  }
-
-  def b__indelibly_true  (tx: Transaction) = synchronized {
-    exec_event_dispatch { state.dispatch_b__indelibly_true(tx) }
-  }
-  def b__indelibly_false (tx: Transaction) = synchronized {
-    exec_event_dispatch { state.dispatch_b__indelibly_false(tx) }
-  }
-  def b__tentatively_true(tx: Transaction) = synchronized {
-    exec_event_dispatch { state.dispatch_b__tentatively_true(tx) }
-  }
-  def b__indeterminate   (tx: Transaction) = synchronized {
-    exec_event_dispatch { state.dispatch_b__indeterminate(tx) }
-  }
+  private def exec_event_dispatch(event_dispatch: => Thunk) =
+    // NOTE: no need to block other threads to exec thunk / subsequent dispatch
+    synchronized { event_dispatch } apply()
 }

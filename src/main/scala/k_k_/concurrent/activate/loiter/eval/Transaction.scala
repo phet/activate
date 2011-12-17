@@ -31,7 +31,7 @@ object Transaction {
 
     val next_id = new AtomicLong(Transaction.INITIALIZATION_ID)
 
-    //!!!!TODO: fix potential for overflow!!!!
+    //!!!!TODO: address potential for overflow!!!!
     Iterator.continually { next_id.getAndIncrement() }
   }
 

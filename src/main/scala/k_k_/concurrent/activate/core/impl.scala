@@ -191,24 +191,22 @@ java.lang.NoSuchMethodError: submit
     return this
   }
 */
+
   private def do_submit(a: Activatom) {
     val observ =
       new Activatable(a.activate_events, a.drop_events, a.activities).observer
     install(a.guard, observ)
   }
 
-  final
-  def affirm(events: List[Event]) {
+  final def affirm(events: List[Event]) {
     events foreach { atomic_affirm(_) }
   }
 
-  final
-  def affirm(event: Event) {
+  final def affirm(event: Event) {
     atomic_affirm(List(event))
   }
 
-  final
-  def atomic_affirm(events: List[Event]) {
+  final def atomic_affirm(events: List[Event]) {
     val scrubbed_events = events map { _ match {
         case e: Fulfillable_Promissory_Event[_] => e.fulfill; e.get_event
         case e: Event => e
@@ -228,20 +226,17 @@ java.lang.NoSuchMethodError: submit
   }
 
   // for completeness only: (silly function name+signature combo)
-  final
-  def atomic_affirm(event: Event) {
+  final def atomic_affirm(event: Event) {
     atomic_affirm(List(event))
   }
 
   @throws(classOf[Would_Deadlock])
-  final
-  def await(guard: Guard) {
+  final def await(guard: Guard) {
     await(0)(guard)
   }
 
   @throws(classOf[Would_Deadlock])
-  final
-  def await(max_ms: Long)(guard: Guard): Boolean = {
+  final def await(max_ms: Long)(guard: Guard): Boolean = {
     try {
       sync.calc_undetermined(guard) match {
 	case None => true // guard has been fully satisfied

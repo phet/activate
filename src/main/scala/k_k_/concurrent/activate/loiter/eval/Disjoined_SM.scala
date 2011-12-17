@@ -16,162 +16,178 @@ class Disjoined_SM(
   observer: Guard_Observer
   ) extends Binary_SM {
 
-  protected def START_STATE = A_Ind__B_Ind
+  import Binary_SM._
 
-  // NOTE: protected, so A_Ind__B_Ind may escape to Binary_SM as START_STATE
-  protected abstract class Base_State extends State {
-    def dispatch_a__indelibly_true  (tx: Transaction): Option[Thunk] = {
+  protected def START_STATE: State = A_Ind__B_Ind
+
+
+  private abstract class Base_State extends State {
+    def dispatch_a__indelibly_true  (tx: Transaction): Thunk = {
       state = Final_State
-      Some(() => observer.indelibly_true(tx))
+      () => observer.indelibly_true(tx)
     }
-    def dispatch_b__indelibly_true  (tx: Transaction): Option[Thunk] = {
+    def dispatch_b__indelibly_true  (tx: Transaction): Thunk = {
       state = Final_State
-      Some(() => observer.indelibly_true(tx))
+      () => observer.indelibly_true(tx)
     }
   }
 
-  // NOTE: protected, so object may escape to Binary_SM (base) as START_STATE
-  protected object A_Ind__B_Ind extends Base_State {
-    def dispatch_a__indelibly_false (tx: Transaction): Option[Thunk] = {
+  /* Notational Key (to state names):
+   *   A - designates the 'first' child
+   *   B - designates the 'second' child
+   *
+   *   Ind - "Indeterminate"
+   *   Ten - "Tentative(ly True)"
+   *   T   - "True"
+   *   F   - "False"
+   *
+   * examples:
+   *   A_Ind__B_Ten - 'first' child "Indeterminate", 'second' child "Tentative"
+   *   A_F__B_Ind   - 'first' child "False", 'second' child "Indeterminate"
+   */
+
+  private object A_Ind__B_Ind extends Base_State {
+    def dispatch_a__indelibly_false (tx: Transaction): Thunk = {
       state = A_F__B_Ind
-      None
+      Noop
     }
-    def dispatch_a__tentatively_true(tx: Transaction): Option[Thunk] = {
+    def dispatch_a__tentatively_true(tx: Transaction): Thunk = {
       state = A_Ten__B_Ind
-      Some(() => observer.tentatively_true(tx))
+      () => observer.tentatively_true(tx)
     }
-    def dispatch_a__indeterminate   (tx: Transaction): Option[Thunk] = error()
-    def dispatch_b__indelibly_false (tx: Transaction): Option[Thunk] = {
+    def dispatch_a__indeterminate   (tx: Transaction): Thunk = fail()
+    def dispatch_b__indelibly_false (tx: Transaction): Thunk = {
       state = A_Ind__B_F
-      None
+      Noop
     }
-    def dispatch_b__tentatively_true(tx: Transaction): Option[Thunk] = {
+    def dispatch_b__tentatively_true(tx: Transaction): Thunk = {
       state = A_Ind__B_Ten
-      Some(() => observer.tentatively_true(tx))
+      () => observer.tentatively_true(tx)
     }
-    def dispatch_b__indeterminate   (tx: Transaction): Option[Thunk] = error()
+    def dispatch_b__indeterminate   (tx: Transaction): Thunk = fail()
   }
 
   private object A_F__B_Ind extends Base_State {
-    def dispatch_a__indelibly_false (tx: Transaction): Option[Thunk] = error()
-    def dispatch_a__tentatively_true(tx: Transaction): Option[Thunk] = error()
-    def dispatch_a__indeterminate   (tx: Transaction): Option[Thunk] = error()
-    def dispatch_b__indelibly_false (tx: Transaction): Option[Thunk] = {
+    def dispatch_a__indelibly_false (tx: Transaction): Thunk = fail()
+    def dispatch_a__tentatively_true(tx: Transaction): Thunk = fail()
+    def dispatch_a__indeterminate   (tx: Transaction): Thunk = fail()
+    def dispatch_b__indelibly_false (tx: Transaction): Thunk = {
       state = Final_State
-      Some(() => observer.indelibly_false(tx))
+      () => observer.indelibly_false(tx)
     }
-    def dispatch_b__tentatively_true(tx: Transaction): Option[Thunk] = {
+    def dispatch_b__tentatively_true(tx: Transaction): Thunk = {
       state = A_F__B_Ten
-      Some(() => observer.tentatively_true(tx))
+      () => observer.tentatively_true(tx)
     }
-    def dispatch_b__indeterminate   (tx: Transaction): Option[Thunk] = error()
+    def dispatch_b__indeterminate   (tx: Transaction): Thunk = fail()
   }
 
   private object A_Ten__B_Ind extends Base_State {
-    def dispatch_a__indelibly_false (tx: Transaction): Option[Thunk] = {
+    def dispatch_a__indelibly_false (tx: Transaction): Thunk = {
       state = A_F__B_Ind
-      Some(() => observer.indeterminate(tx))
+      () => observer.indeterminate(tx)
     }
-    def dispatch_a__tentatively_true(tx: Transaction): Option[Thunk] = error()
-    def dispatch_a__indeterminate   (tx: Transaction): Option[Thunk] = {
+    def dispatch_a__tentatively_true(tx: Transaction): Thunk = fail()
+    def dispatch_a__indeterminate   (tx: Transaction): Thunk = {
       state = A_Ind__B_Ind
-      Some(() => observer.indeterminate(tx))
+      () => observer.indeterminate(tx)
     }
-    def dispatch_b__indelibly_false (tx: Transaction): Option[Thunk] = {
+    def dispatch_b__indelibly_false (tx: Transaction): Thunk = {
       state = A_Ten__B_F
-      None
+      Noop
     }
-    def dispatch_b__tentatively_true(tx: Transaction): Option[Thunk] = {
+    def dispatch_b__tentatively_true(tx: Transaction): Thunk = {
       state = A_Ten__B_Ten
-      None
+      Noop
     }
-    def dispatch_b__indeterminate   (tx: Transaction): Option[Thunk] = error()
+    def dispatch_b__indeterminate   (tx: Transaction): Thunk = fail()
   }
 
   private object A_F__B_Ten extends Base_State {
-    def dispatch_a__indelibly_false (tx: Transaction): Option[Thunk] = error()
-    def dispatch_a__tentatively_true(tx: Transaction): Option[Thunk] = error()
-    def dispatch_a__indeterminate   (tx: Transaction): Option[Thunk] = error()
-    def dispatch_b__indelibly_false (tx: Transaction): Option[Thunk] = {
+    def dispatch_a__indelibly_false (tx: Transaction): Thunk = fail()
+    def dispatch_a__tentatively_true(tx: Transaction): Thunk = fail()
+    def dispatch_a__indeterminate   (tx: Transaction): Thunk = fail()
+    def dispatch_b__indelibly_false (tx: Transaction): Thunk = {
       state = Final_State
-      Some(() => observer.indelibly_false(tx))
+      () => observer.indelibly_false(tx)
     }
-    def dispatch_b__tentatively_true(tx: Transaction): Option[Thunk] = error()
-    def dispatch_b__indeterminate   (tx: Transaction): Option[Thunk] = {
+    def dispatch_b__tentatively_true(tx: Transaction): Thunk = fail()
+    def dispatch_b__indeterminate   (tx: Transaction): Thunk = {
       state = A_F__B_Ind
-      Some(() => observer.indeterminate(tx))
+      () => observer.indeterminate(tx)
     }
   }
 
   private object A_Ten__B_Ten extends Base_State {
-    def dispatch_a__indelibly_false (tx: Transaction): Option[Thunk] = {
+    def dispatch_a__indelibly_false (tx: Transaction): Thunk = {
       state = A_F__B_Ten
-      None
+      Noop
     }
-    def dispatch_a__tentatively_true(tx: Transaction): Option[Thunk] = error()
-    def dispatch_a__indeterminate   (tx: Transaction): Option[Thunk] = {
+    def dispatch_a__tentatively_true(tx: Transaction): Thunk = fail()
+    def dispatch_a__indeterminate   (tx: Transaction): Thunk = {
       state = A_Ind__B_Ten
-      None
+      Noop
     }
-    def dispatch_b__indelibly_false (tx: Transaction): Option[Thunk] = {
+    def dispatch_b__indelibly_false (tx: Transaction): Thunk = {
       state = A_Ten__B_F
-      None
+      Noop
     }
-    def dispatch_b__tentatively_true(tx: Transaction): Option[Thunk] = error()
-    def dispatch_b__indeterminate   (tx: Transaction): Option[Thunk] = {
+    def dispatch_b__tentatively_true(tx: Transaction): Thunk = fail()
+    def dispatch_b__indeterminate   (tx: Transaction): Thunk = {
       state = A_Ten__B_Ind
-      None
+      Noop
     }
   }
 
   private object A_Ind__B_F extends Base_State {
-    def dispatch_a__indelibly_false (tx: Transaction): Option[Thunk] = {
+    def dispatch_a__indelibly_false (tx: Transaction): Thunk = {
       state = Final_State
-      Some(() => observer.indelibly_false(tx))
+      () => observer.indelibly_false(tx)
     }
-    def dispatch_a__tentatively_true(tx: Transaction): Option[Thunk] = {
+    def dispatch_a__tentatively_true(tx: Transaction): Thunk = {
       state = A_Ten__B_F
-      Some(() => observer.tentatively_true(tx))
+      () => observer.tentatively_true(tx)
     }
-    def dispatch_a__indeterminate   (tx: Transaction): Option[Thunk] = error()
-    def dispatch_b__indelibly_false (tx: Transaction): Option[Thunk] = error()
-    def dispatch_b__tentatively_true(tx: Transaction): Option[Thunk] = error()
-    def dispatch_b__indeterminate   (tx: Transaction): Option[Thunk] = error()
+    def dispatch_a__indeterminate   (tx: Transaction): Thunk = fail()
+    def dispatch_b__indelibly_false (tx: Transaction): Thunk = fail()
+    def dispatch_b__tentatively_true(tx: Transaction): Thunk = fail()
+    def dispatch_b__indeterminate   (tx: Transaction): Thunk = fail()
   }
 
   private object A_Ind__B_Ten extends Base_State {
-    def dispatch_a__indelibly_false (tx: Transaction): Option[Thunk] = {
+    def dispatch_a__indelibly_false (tx: Transaction): Thunk = {
       state = A_F__B_Ten
-      None
+      Noop
     }
-    def dispatch_a__tentatively_true(tx: Transaction): Option[Thunk] = {
+    def dispatch_a__tentatively_true(tx: Transaction): Thunk = {
       state = A_Ten__B_Ten
-      None
+      Noop
     }
-    def dispatch_a__indeterminate   (tx: Transaction): Option[Thunk] = error()
-    def dispatch_b__indelibly_false (tx: Transaction): Option[Thunk] = {
+    def dispatch_a__indeterminate   (tx: Transaction): Thunk = fail()
+    def dispatch_b__indelibly_false (tx: Transaction): Thunk = {
       state = A_Ind__B_F
-      Some(() => observer.indeterminate(tx))
+      () => observer.indeterminate(tx)
     }
-    def dispatch_b__tentatively_true(tx: Transaction): Option[Thunk] = error()
-    def dispatch_b__indeterminate   (tx: Transaction): Option[Thunk] = {
+    def dispatch_b__tentatively_true(tx: Transaction): Thunk = fail()
+    def dispatch_b__indeterminate   (tx: Transaction): Thunk = {
       state = A_Ind__B_Ind
-      Some(() => observer.indeterminate(tx))
+      () => observer.indeterminate(tx)
     }
   }
 
   private object A_Ten__B_F extends Base_State {
-    def dispatch_a__indelibly_false (tx: Transaction): Option[Thunk] = {
+    def dispatch_a__indelibly_false (tx: Transaction): Thunk = {
       state = Final_State
-      Some(() => observer.indelibly_false(tx))
+      () => observer.indelibly_false(tx)
     }
-    def dispatch_a__tentatively_true(tx: Transaction): Option[Thunk] = error()
-    def dispatch_a__indeterminate   (tx: Transaction): Option[Thunk] = {
+    def dispatch_a__tentatively_true(tx: Transaction): Thunk = fail()
+    def dispatch_a__indeterminate   (tx: Transaction): Thunk = {
       state = A_Ind__B_F
-      Some(() => observer.indeterminate(tx))
+      () => observer.indeterminate(tx)
     }
-    def dispatch_b__indelibly_false (tx: Transaction): Option[Thunk] = error()
-    def dispatch_b__tentatively_true(tx: Transaction): Option[Thunk] = error()
-    def dispatch_b__indeterminate   (tx: Transaction): Option[Thunk] = error()
+    def dispatch_b__indelibly_false (tx: Transaction): Thunk = fail()
+    def dispatch_b__tentatively_true(tx: Transaction): Thunk = fail()
+    def dispatch_b__indeterminate   (tx: Transaction): Thunk = fail()
   }
 }
+
