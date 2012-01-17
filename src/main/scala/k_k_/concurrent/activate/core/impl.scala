@@ -298,7 +298,7 @@ java.lang.NoSuchMethodError: submit
   }
 
   protected def install(guard: Guard, observer: Guard_Observer) {
-    async.evaluate(guard, observer)
+    async.track(guard, observer)
   }
 
   // req_tx_complete_? ensures isolation by only considering an event
@@ -313,7 +313,8 @@ java.lang.NoSuchMethodError: submit
   private def monitor(event: Event, observer: Event_Observer): Boolean = {
     event_register.get(event) match {
       case Event_Confirmation(tx) =>
-        observer.exists(tx); true
+        observer.exists(tx)
+        true
       case expect @ Event_Expectation(_) =>
         update_expectation(event, Some(expect), observer)
       case null =>
@@ -321,10 +322,11 @@ java.lang.NoSuchMethodError: submit
     }
   }
 
-  private def update_expectation(event: Event,
-                                 curr_expect: Option[Event_Expectation],
-                                 observer: Event_Observer):
-      Boolean = {
+  private def update_expectation(
+    event: Event,
+    curr_expect: Option[Event_Expectation],
+    observer: Event_Observer):
+      Boolean =
     curr_expect match {
       case Some(expect) =>
         if (!event_register.replace(event, expect,
@@ -352,7 +354,6 @@ java.lang.NoSuchMethodError: submit
               false
           }
     }
-  }
 
   private def activate_!(activities: List[Activity]) {
     for { activity <- activities } {

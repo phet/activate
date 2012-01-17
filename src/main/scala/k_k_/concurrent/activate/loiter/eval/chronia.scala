@@ -19,43 +19,41 @@ import scala.util.control.Exception.{catching, handling}
 
 
 // for synchronous evaluation
-object Event_History {
-
-  def apply(_is_confirmed: Event => Boolean) =
-    new Event_History {
-      def is_confirmed(event: Event) =
-        _is_confirmed(event)
-    }
-}
-
 trait Event_History {
   def is_confirmed(event: Event): Boolean
 }
 
+object Event_History {
 
-object Event_Observatory {
-
-  def apply(creation_tx: Transaction)
-        (_begin_monitoring: (Event, Event_Observer) => Boolean) =
-    new Event_Observatory {
-      def begin_monitoring(event: Event, observer: Event_Observer): Boolean =
-        _begin_monitoring(event, observer)
-
-      val origin_tx = creation_tx
+  def apply(is_conf: Event => Boolean) =
+    new Event_History {
+      def is_confirmed(event: Event) = is_conf(event)
     }
 }
 
+
 // for asynchronous evaluation
 trait Event_Observatory {
-  def begin_monitoring(event: Event, observer: Event_Observer): Boolean
-
+  /** registers `event` with `observer`
+   * @return true iff observer notified during registration, hence never again
+   */
+  def register(event: Event, observer: Event_Observer): Boolean
   val origin_tx: Transaction
+}
+
+object Event_Observatory {
+
+  def apply(orig_tx: Transaction)(reg: (Event, Event_Observer) => Boolean) =
+    new Event_Observatory {
+      def register(event: Event, obs: Event_Observer): Boolean = reg(event, obs)
+      val origin_tx = orig_tx
+    }
 }
 
 
 object Synchronous {
 
-  // internal multi-level return; stacktrace unimportant, therefore 'object' ok
+  // internal multi-level 'return'; stacktrace unimportant, so 'object' fine
   class Contradiction extends RuntimeException
   case object Contradiction extends Contradiction
 }
@@ -64,12 +62,12 @@ class Synchronous(history: Event_History) {
 
   /**
    * @return simplified `Guard` of what still undetermined, None iff fully det.
-   * @throws Contradiction iff determined `Guard` unable to be satisfied
+   * @throws Contradiction iff determined `Guard` impossible to satisfy
    */
   def calc_undetermined(guard: Guard): Option[Guard] = {
     import Synchronous.Contradiction
 
-    def preorder(guard: Guard, negate: Boolean): Option[Guard] = {
+    def preorder(guard: Guard, negate: Boolean): Option[Guard] =
       (guard, negate) match {
         case (Null_Guard, false) =>
           None
@@ -119,10 +117,10 @@ class Synchronous(history: Event_History) {
           // short-circuit: disjunction fully determined once either side is
           catching(classOf[Contradiction]) either preorder(l, negate) match {
             case Left(contradiction) =>
-              preorder(r, negate) // r Guard will now determine all
+              preorder(r, negate) // r Guard shall now determine all
             case Right(lhs_undetermined) =>
               handling(classOf[Contradiction]) by { _ =>
-                lhs_undetermined // l Guard must determine all
+                lhs_undetermined // l Guard would remain to determine all
               } apply {
                 for {
                   lhs <- lhs_undetermined
@@ -149,7 +147,6 @@ class Synchronous(history: Event_History) {
           }
          */
       }
-    }
 
     preorder(guard, false)
   }
@@ -169,69 +166,78 @@ object Asynchronous {
       parent.indelibly_false(tx)
     }
 
-    def announce_non_existence(tx: Transaction): Boolean = {
+    def announce_non_existent_event(tx: Transaction): Boolean = {
       parent.tentatively_true(tx)
       false
     }
   }
 
   private abstract class Binary_Eval(
-    parent: Guard_Observer
+    sm: Dual_Guard_Observer
     ) {
 
-    protected val sm: Dual_Guard_Observer
-
-    //????why is this always false (in derived classes)?????
-    def is_indelibly_determined : Boolean =
-      false
+    def is_indelibly_determined: Boolean
 
     def lhs_observer =
       new Guard_Observer {
-        def indelibly_true  (tx: Transaction) { sm.a__indelibly_true(tx)   }
-        def indelibly_false (tx: Transaction) { sm.a__indelibly_false(tx)  }
+        def indelibly_true  (tx: Transaction) { sm.a__indelibly_true(tx)
+                                                lhs_indelibly = Some(true) }
+        def indelibly_false (tx: Transaction) { sm.a__indelibly_false(tx)
+                                                lhs_indelibly = Some(false)}
         def tentatively_true(tx: Transaction) { sm.a__tentatively_true(tx) }
         def indeterminate   (tx: Transaction) { sm.a__indeterminate(tx)    }
       }
 
     def rhs_observer =
       new Guard_Observer {
-        def indelibly_true  (tx: Transaction) { sm.b__indelibly_true(tx)   }
-        def indelibly_false (tx: Transaction) { sm.b__indelibly_false(tx)  }
+        def indelibly_true  (tx: Transaction) { sm.b__indelibly_true(tx)
+                                                rhs_indelibly = Some(true) }
+        def indelibly_false (tx: Transaction) { sm.b__indelibly_false(tx)
+                                                rhs_indelibly = Some(false)}
         def tentatively_true(tx: Transaction) { sm.b__tentatively_true(tx) }
         def indeterminate   (tx: Transaction) { sm.b__indeterminate(tx)    }
       }
+
+    protected def count_indelible_where(f: Boolean => Boolean): (Int, Int) =
+      Seq(lhs_indelibly, rhs_indelibly).map { opt =>
+        if (opt.isEmpty) (0, 0)
+        else             (1, opt.count(f))
+      }.reduce { (x, y) =>
+        (x._1 + y._1, x._2 + y._2)
+      }
+
+    @volatile private[this] var lhs_indelibly: Option[Boolean] = None
+    @volatile private[this] var rhs_indelibly: Option[Boolean] = None
   }
 
-  private class Conjoined_Eval(
-    parent: Guard_Observer
-    ) extends Binary_Eval(parent) {
+  private class Conjoined_Eval(parent: Guard_Observer)
+      extends Binary_Eval(new Conjoined_SM(parent)) {
 
-    protected val sm = new Conjoined_SM(parent)
-
-    override def is_indelibly_determined : Boolean =
-      false
+    override def is_indelibly_determined: Boolean = {
+      val (n_determined, n_false) = count_indelible_where { _ == false }
+      n_determined == 2 || n_false > 0
+    }
   }
 
-  private class Disjoined_Eval(
-    parent: Guard_Observer
-    ) extends Binary_Eval(parent) {
+  private class Disjoined_Eval(parent: Guard_Observer)
+      extends Binary_Eval(new Disjoined_SM(parent)) {
 
-    protected val sm = new Disjoined_SM(parent)
-
-    override def is_indelibly_determined : Boolean =
-      false
+    override def is_indelibly_determined: Boolean = {
+      val (n_determined, n_true) = count_indelible_where { _ == true }
+      n_determined == 2 || n_true > 0
+    }
   }
 }
 
 class Asynchronous(observatory: Event_Observatory) {
 
-  import Asynchronous._
-  import observatory.origin_tx
+  def track(guard: Guard, observer: Guard_Observer) {
+    import Asynchronous._
+    import observatory.origin_tx
 
-  def evaluate(guard: Guard, observer: Guard_Observer) {
-    /** @return whether fully determined */
+    /** @return true/false whether fully determined */
     def preorder(guard: Guard, observer: Guard_Observer, negate: Boolean):
-        Boolean = {
+        Boolean =
       (guard, negate) match {
         case (Null_Guard, false) =>
           observer.indelibly_true(origin_tx)
@@ -243,21 +249,21 @@ class Asynchronous(observatory: Event_Observatory) {
 
         case (Existential_Guard(event), false) =>
           val evaluator = new Existential_Eval(observer)
-          observatory.begin_monitoring(event, evaluator.observer)
+          observatory.register(event, evaluator.observer)
 
         case (Existential_Guard(event), true) =>
           val evaluator = new Negated_Existential_Eval(observer)
-          observatory.begin_monitoring(event, evaluator.observer) ||
-            evaluator.announce_non_existence(origin_tx)
+          observatory.register(event, evaluator.observer) ||
+            evaluator.announce_non_existent_event(origin_tx)
 
         case (Negated_Existential_Guard(event), false) =>
           val evaluator = new Negated_Existential_Eval(observer)
-          observatory.begin_monitoring(event, evaluator.observer) ||
-            evaluator.announce_non_existence(origin_tx)
+          observatory.register(event, evaluator.observer) ||
+            evaluator.announce_non_existent_event(origin_tx)
 
         case (Negated_Existential_Guard(event), true) =>
           val evaluator = new Existential_Eval(observer)
-          observatory.begin_monitoring(event, evaluator.observer)
+          observatory.register(event, evaluator.observer)
 
 
         // rewrite in Negated Normal Form by application of DeMorgan's Law:
@@ -281,15 +287,12 @@ class Asynchronous(observatory: Event_Observatory) {
 
         case (Disjoined_Guard(l, r), _) =>
           val evaluator = new Disjoined_Eval(observer)
-          val is_determined =
-            preorder(l, evaluator.lhs_observer, negate)
-          //???should this if/else really match that of Conjoined_Guard???
+          val is_determined = preorder(l, evaluator.lhs_observer, negate)
           if (is_determined && evaluator.is_indelibly_determined)
             true
           else
             preorder(r, evaluator.rhs_observer, negate)
       }
-    }
 
     preorder(guard, observer, false)
   }
