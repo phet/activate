@@ -14,6 +14,8 @@ package k_k_.test.concurrent.activate
 import org.scalatest.FunSuite
 import org.scalatest.matchers.ShouldMatchers
 
+import org.slf4j.LoggerFactory
+
 import k_k_.concurrent.activate.core._
 import k_k_.concurrent.activate.core.Activarium._
 import k_k_.concurrent.activate.loiter._
@@ -23,7 +25,10 @@ import k_k_.concurrent.activate.loiter.Guard._
 @org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class TestActivate extends FunSuite with ShouldMatchers {
 
+  val logger = LoggerFactory.getLogger(classOf[TestActivate])
+
   def log(s: String) {
+    // logger.info(s)
     System.err.println(s)
   }
 
@@ -121,36 +126,36 @@ class TestActivate extends FunSuite with ShouldMatchers {
   }
 
 
-  def pythag(a: Int, b: Int): Promissory_Event[Int] = {
-    val a_result, b_result, answer = Val_Event[Int]
+  def pythag(a: Int, b: Int): Promise[Int] = {
+    val a_result, b_result, answer = Promise[Int]
     @@.submit(+> { @@.affirm(a_result(a*a)) } ::
-               +> { @@.affirm(b_result(b*b)) } ::
-               (a_result && b_result) ?+> (
-                  @@.affirm(answer(math.sqrt(?(a_result) + ?(b_result)).toInt))
-                 ) :: Nil)
+              +> { @@.affirm(b_result(b*b)) } ::
+              (a_result && b_result) ?+> (
+                 @@.affirm(answer(math.sqrt(?(a_result) + ?(b_result)).toInt))
+                ) :: Nil)
     answer
   }
 
-  def factorial_rec(n: Int): Promissory_Event[Int] = {
+  def factorial_rec(n: Int): Promise[Int] = {
     if (n < 0) {
       throw new IllegalArgumentException("'" + n + "' < 0")
     } else {
-      val result = Val_Event[Int]
+      val result = Promise[Int]
       val inner = factorial(n-1)
       @@.submit(inner ?+> @@.affirm(result(n * ?(factorial(n-1)))))
       result
     }
   }
 
-  def factorial(n: Int): Promissory_Event[Int] = {
+  def factorial(n: Int): Promise[Int] = {
     if (n < 0) {
       throw new IllegalArgumentException("'" + n + "' < 0")
     } else {
-      val result = Val_Event[Int]
+      val result = Promise[Int]
       if (n == 0) {
         @@.affirm(result(1))
       } else {
-        @@.submit(~> { () =>
+        @@.submit(+> {
                        val inner = factorial(n-1)
                        @@.submit(inner ?+> { () =>
                                   @@.affirm(result(n * ?(inner))) })
@@ -163,7 +168,7 @@ class TestActivate extends FunSuite with ShouldMatchers {
 
 /*
   def pythag(cont: (Int) => Unit)(a: Int, b: Int) = {
-    val (a_result, b_result) = (Val_Event[Int], Val_Event[Int])
+    val (a_result, b_result) = (Promise[Int], Promise[Int])
     @@.submit(+> { @@.affirm(a_result(a*a)) } ::
                +> { @@.affirm(b_result(b*b)) } ::
                (a_result && b_result) ?+> { () =>
@@ -192,7 +197,7 @@ class TestActivate extends FunSuite with ShouldMatchers {
 // `~!@#$%^&*  _-+=    | :  < > ?/
 // `~!@#$%  *   -+=         < > ?
 
-//  val f = a_computed && b_computed ?~>
+//  val f = a_computed && b_computed ?+>
 //              { val result = Math.sqrt(a_result + b_result)
 
 
@@ -225,7 +230,13 @@ class TestActivate extends FunSuite with ShouldMatchers {
   def print_factorial(n: Int) {
     val fac_result = factorial(n)
     @@.submit(fac_result ?+>
+               log("factorial(" + n + ") = (" + fac_result.? + ")"))
+
+/*
                log("factorial(" + n + ") = (" + ?(fac_result) + ")"))
+
+               log("factorial(" + n + ") = (" + <(fac_result) + ")"))
+*/
   }
 
 
@@ -276,7 +287,7 @@ class TestActivate extends FunSuite with ShouldMatchers {
       def rerun(n: Int) {
         val failed = new Event
         log("rerun")
-        @@.submit(~> { () =>
+        @@.submit(+> {
                        try {
                          task(stop)
                        } finally {
@@ -300,14 +311,14 @@ class TestActivate extends FunSuite with ShouldMatchers {
     }
   }
 
-  def parallel_map[T : ClassManifest](arr: Array[T])(f: T => T): Promissory_Event[Array[T]] = {
-    val result_event = Val_Event[Array[T]]
+  def parallel_map[T : ClassManifest](arr: Array[T])(f: T => T): Promise[Array[T]] = {
+    val result_event = Promise[Array[T]]
     val result = new Array[T](arr.length)
     var result_ready: Guard = Null_Guard
     for { i <- 0 until arr.length } {
       val index_updated = new Event
       result_ready &&= index_updated
-      @@.submit(~> { () =>
+      @@.submit(+> { () =>
                      result(i) = f(arr(i)); @@.affirm(index_updated)
                    })
     }
@@ -318,30 +329,29 @@ class TestActivate extends FunSuite with ShouldMatchers {
 
 
   object defer {
-    def apply[P1,R](f: P1 => R)(a1: P1): (Event, Promissory_Event[R]) = {
-    // def apply[P1,R](f: P1 => R, a1: P1): (Event, Promissory_Event[R]) = {
-      val (start, result) = (new Event, Val_Event[R])
+    def apply[P1,R](f: P1 => R)(a1: P1): (Event, Promise[R]) = {
+    // def apply[P1,R](f: P1 => R, a1: P1): (Event, Promise[R]) = {
+      val (start, result) = (new Event, Promise[R])
       @@.submit(start ?+> @@.affirm(result(f(a1))))
       (start, result)
     }
 
     def apply[P1,P2,R](f: (P1, P2) => R)(a1: P1, a2: P2):
-        (Event, Promissory_Event[R]) = {
-      val (start, result) = (new Event, Val_Event[R])
+        (Event, Promise[R]) = {
+      val (start, result) = (new Event, Promise[R])
       @@.submit(start ?+> @@.affirm(result(f(a1, a2))))
       (start, result)
     }
   }
 
   object async {
-    def apply[P1,R](f: P1 => R)(a1: P1): Promissory_Event[R] = {
+    def apply[P1,R](f: P1 => R)(a1: P1): Promise[R] = {
       val (start, result) = defer(f)(a1)
       @@.affirm(start)
       result
     }
 
-    def apply[P1,P2,R](f: (P1, P2) => R)(a1: P1, a2: P2):
-        Promissory_Event[R] = {
+    def apply[P1,P2,R](f: (P1, P2) => R)(a1: P1, a2: P2): Promise[R] = {
       val (start, result) = defer(f)(a1, a2)
       @@.affirm(start)
       result

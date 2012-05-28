@@ -14,136 +14,109 @@ package k_k_.concurrent.activate.core
 import k_k_.concurrent.activate.loiter._
 
 
-//!!!!!parse error!!!!!!
-// error: identifier expected but ')' found.
-// abstract class Activity extends () => Unit
-//                                  ^
 abstract class Activity extends (() => Unit)
 // {
 //  def unary_~ : Activatom = new Activatom(this)
 //}
 
-
 object Activity {
-  implicit def func2activity(f: () => Unit): Activity =
+  implicit def func2Activity[T](f: () => T): Activity =
     new Activity {
       def apply() = f()
     }
 
-  implicit def expr2activity(f: => Unit): Activity =
+  implicit def expr2Activity[T](f: => T): Activity =
     new Activity {
       def apply() = f
     }
 }
 
+
 object +> {
-  def apply(f: => Unit): Activatom =
-    new Activatom(Null_Guard,
-                  new Activity {
-                    def apply() = f
-                  }
-                )
-}
 
-object ~> {
-  def apply(f: () => Unit): Activatom =
-    new Activatom(Null_Guard,
-                  new Activity {
-                    def apply() = f()
-                  }
-                )
-}
-
-/*???
-object Activatom {
-  implicit def activity2activatom(a: Activity): Activatom =
-    new Activatom(Null_Guard, a)
-
-  implicit def expr2activatom(f: => Unit): Activatom =
-    new Activatom(Null_Guard, new Activity {
-      def apply() = f
-    }
-                )
-}
-*/
-
-class Activatom(
-  g: Guard,
-  act_evts: List[Event],
-  drop_evts: List[Event],
-  activities0: List[Activity]
-  ) {
   import Activity._
 
-  def this(g: Guard, act_evts: List[Event], drop_evts: List[Event],
-           activity: Activity) =
-    this(g, act_evts, drop_evts, List(activity))
+  def apply(a: Activity): Activatom =
+    new Activatom(a)
+}
 
-  def this(g: Guard, activity: Activity) =
-    this(g, Nil, Nil, List(activity))
 
-//  def this(activity: Activity) =
-//    this(Null_Guard, Nil, Nil, List(activity))
+object Activatom {
+  implicit def Activity2Activatom(a: Activity): Activatom =
+    new Activatom(a)
 
-  //??????????
-  // error: double definition:
-  // ...have same type after erasure: (k_k_.concurrent.activate.loiter.guard.Guard,List,List,List)
-  // def this(g: Guard, act_evts: List[Event], drop_evts: List[Event],
-  //     ^
-  //          activities: List[() => Unit]) =
-  //   this(g, act_evts, drop_evts, activities map {Activity.func2activity(_)})
+  import Activity._
 
-  def this(g: Guard, act_evts: List[Event], drop_evts: List[Event],
-           activity: () => Unit) =
-    this(g, act_evts, drop_evts, List[Activity](activity))
+  implicit def func2Activatom[T](f: () => T): Activatom =
+    new Activatom(f)
 
-  def guard: Guard =
-    g
-  def activate_events: List[Event] =
-    act_evts
-  def drop_events: List[Event] =
-    drop_evts
-  def activities: List[Activity] =
-    activities0
+  implicit def expr2Activatom[T](f: => T): Activatom =
+    new Activatom(f)
 
-  def unary_! =
-    new Activatom(!g, act_evts, drop_evts, activities0)
-  def &&(lhs: Guard) =
-    new Activatom((g && lhs), act_evts, drop_evts, activities0)
-  def ||(lhs: Guard) =
-    new Activatom((g || lhs), act_evts, drop_evts, activities0)
-  def ^ (lhs: Guard) =
-    new Activatom((g ^  lhs), act_evts, drop_evts, activities0)
+  /** a kind of temporal if/else for a Guard and two groups of Event`s */
+  def upon(guard: Guard, true_events: List[Event], false_events: List[Event]):
+      Activatom =
+    new Activatom(guard, true_events, false_events, Nil)
 
-  def add_activates(acts: List[Event]) =
-    new Activatom(g, acts ::: act_evts, drop_evts, activities0)
-  def add_drops(drops: List[Event]) =
-    new Activatom(g, act_evts, drops ::: drop_evts, activities0)
+  def upon(guard: Guard, true_event: Event, false_event: Event): Activatom =
+    upon(guard, List(true_event), List(false_event))
+}
 
-  // def ++^(acts: List[Event]) = add_activates(acts)
+/**
+ * per `guard` determination, `activities` may be either 'activated' or
+ * 'abandoned', at which point the associated events are affirmed.
+ * terminology wise, while the `guard` is indeterminate, `activities` are said
+ * to be 'inhibited'.
+ */
+class Activatom(
+  val guard: Guard,
+  val activate_events: List[Event],
+  val abandon_events: List[Event],
+  val activities: List[Activity]
+  ) {
+
+  def this(
+    guard: Guard,
+    activate_events: List[Event],
+    abandon_events: List[Event],
+    activity: Activity
+    ) =
+    this(guard, activate_events, abandon_events, List(activity))
+
+  def this(guard: Guard, activity: Activity) =
+    this(guard, Nil, Nil, List(activity))
+
+  def this(activity: Activity) =
+    this(Null_Guard, Nil, Nil, List(activity))
+
+
+  def copy(
+    guard: Guard                 = this.guard,
+    activate_events: List[Event] = this.activate_events,
+    abandon_events: List[Event]  = this.abandon_events,
+    activities: List[Activity]   = this.activities
+    ): Activatom =
+    new Activatom(guard, activate_events, abandon_events, activities)
+
+
+  def unary_!        = copy(!guard)
+  def &&(rhs: Guard) = copy(guard && rhs)
+  def ||(rhs: Guard) = copy(guard || rhs)
+  def ^ (rhs: Guard) = copy(guard ^  rhs)
+
+  def add_activates(activates: List[Event]) =
+    copy(activate_events = activates ::: activate_events)
+  def add_abandons(abandons: List[Event]) =
+    copy(abandon_events  = abandons  ::: abandon_events)
+
+  // def ++^(activates: List[Event]) = add_activates(activates)
   def ++^ = add_activates _
 
-  // def ++/(drops: List[Event]) = add_drops(drops)
-  def ++/ = add_drops _
+  // def ++/(abandons: List[Event])  = add_abandons(abandons)
+  def ++/ = add_abandons _
 
-  def add_activities(activities_0: List[Activity]) =
-    new Activatom(g, act_evts, drop_evts, activities_0 ::: activities0)
-  def add_activities(activity: Activity) =
-    new Activatom(g, act_evts, drop_evts, activity :: activities0)
-/*
-  def add_activities(activity: () => Unit) =
-    new Activatom(g, act_evts, drop_evts, activity :: activities0)
+  def add_activities(acts: Activity*) =
+    copy(activities = (acts :\ activities) { _ :: _ })
 
-  def ++&(activity: () => Unit)         = add_activities (activity: Activity)
-*/
-
-  def ++&(activities_0: List[Activity]) = add_activities (activities_0:
-                                                            List[Activity])
-  def ++&(activity: Activity)           = add_activities (activity: Activity)
-
-  //!!!!!!!should redefine all overloaded defs!!!!!!!!
-  // error: ambiguous reference to overloaded definition,
-  // ...both method ... and ... match expected type ?
-  // def ++& = add_activities _
-  //          ^
+  def ++&(acts: Activity*) = add_activities(acts)
 }

@@ -18,6 +18,10 @@ import k_k_.concurrent.activate.util.opt_iterate
 import scala.collection.mutable
 
 
+/**
+ * When an Activatable is only tentatively true, its activation must be deferred
+ * until the transaction completes at which time it may be fulfilled (activated)
+ */
 trait Deferred {
   def fulfill(tx: Transaction)
 }
@@ -31,7 +35,7 @@ object Transaction {
 
     val next_id = new AtomicLong(Transaction.INITIALIZATION_ID)
 
-    //!!!!TODO: address potential for overflow!!!!
+    //!!!!TODO: fix potential for overflow!!!!
     Iterator.continually { next_id.getAndIncrement() }
   }
 
@@ -44,40 +48,40 @@ abstract class Transaction(
   private val parent: Option[Transaction] = None
   ) {
 
-  private val queue = mutable.Queue.empty[Event]
-  private val deferrals = mutable.Seq.empty[Deferred]
-  @volatile private var is_complete = false
+  private val eventQueue = mutable.Queue.empty[Event]
+  private val deferrals = mutable.ArrayBuffer.empty[Deferred]
+  // check-and-set var must be protected by synchronization!
+  private[this] var is_complete = false
 
 
-  final def add_events(events: List[Event]) = synchronized {
+  final def add_events(events: List[Event]): Unit = synchronized {
     if (!is_complete) {
-      queue ++= events
+      eventQueue ++= events
     } else {
       handle_add_events_after_complete(events)
     }
   }
 
-  final def add_deferred(deferred: Deferred) = synchronized {
+  final def add_deferred(deferred: Deferred): Unit = synchronized {
     if (!is_complete) {
-      deferrals :+ deferred
+      deferrals += deferred
     } else {
       handle_add_deferred_after_complete(deferred)
     }
   }
 
   //???should this really perform a side-effect (which changes semantics of add_events, add_deferred)???
-  final def has_events: Boolean = synchronized {
-    is_complete || {
-      if (!queue.isEmpty) false
-      else {
-        is_complete = true
-        true
-      }
+  final def has_more_events_or_else_complete(): Boolean = synchronized {
+    if (is_complete) false
+    else if (!eventQueue.isEmpty) true
+    else {
+      is_complete = true
+      false
     }
   }
 
   final def take_event(): Event = synchronized {
-    queue.dequeue
+    eventQueue.dequeue
   }
 
   override def equals(other: Any): Boolean =
@@ -92,21 +96,20 @@ abstract class Transaction(
   protected def can_equal(other: Any): Boolean =
     other.isInstanceOf[Transaction]
 
+  /** is `this` 'older than' `other`? */
   final def <(other: Transaction): Boolean =
     id < other.id
 
-  // is `this` an ancestor of other?
+  /** is `this` an ancestor of `other`? */
   final def is_ancestor_of(other: Transaction): Boolean =
     opt_iterate(other)( _.parent ).exists { id == _.id }
 
-  //???remove all deferrals afterwards???
-  //check for a previously closed transaction???
   final def fulfill_deferred() = synchronized {
+    if (!is_complete)
+      sys.error("fulfill_deferred() on incomplete [%s]".format(this))
     if (!deferrals.isEmpty) {
-      val shadow = create_shadow
-      // fulfill in reverse order of adding (first, to those waiting longest)
-      deferrals.foreach { _.fulfill(this) }
-      shadow.execute(shadow)
+      deferrals.foreach { _.fulfill(this) } // fulfill in order of added (FIFO)
+      //???remove all afterward??? deferrals.clear() // defensive clear
     }
   }
 
@@ -114,11 +117,11 @@ abstract class Transaction(
     val n_parents = opt_iterate(this)( _.parent ).size - 1 // -1 for `this`
     "Transaction(%s%s)".format(
         id.toString,
-        if (n_parents == 0) "" else ("*" + n_parents))
+        if (n_parents == 0) "" else (" * " + n_parents))
   }
 
-  protected final def create_shadow: Transaction =
-    // (resulting shadow shall perform in the same manner as `this`)
+  protected final def create_shadow(): Transaction =
+    // (resulting shadow shall perform otherwise identically to `this`)
     new Transaction(id, Some(this)) {
       protected val execute = Transaction.this.execute
 
@@ -140,6 +143,7 @@ abstract class Transaction(
 }
 
 
+/** Intended as a sentinel value: not for actual use */
 object Nil_Transaction extends Transaction(Transaction.NIL_ID) {
 
   protected val execute = (tx: Transaction) => { }

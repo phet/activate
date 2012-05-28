@@ -17,7 +17,14 @@ import k_k_.concurrent.activate.loiter.eval.Transaction
 
 sealed abstract class Event_Exposition
 
-case class Event_Expectation(
+
+object Event_Expectation {
+
+  def apply(observers: List[Event_Observer]) =
+    new Event_Expectation(observers)
+}
+
+final class Event_Expectation(
   observers: List[Event_Observer]
   ) extends Event_Exposition {
 
@@ -29,9 +36,10 @@ case class Event_Expectation(
 
   def fulfill(tx: Transaction) {
     // announce existence in reverse order (first, to those waiting longest)
-    observers.reverse.map { _.exists(tx) }
+    observers.reverse.foreach { _.exists(tx) }
   }
 }
+
 
 case class Event_Confirmation(
   tx: Transaction

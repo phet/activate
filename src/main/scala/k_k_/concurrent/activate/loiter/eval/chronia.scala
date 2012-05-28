@@ -61,8 +61,9 @@ object Synchronous {
 class Synchronous(history: Event_History) {
 
   /**
-   * @return simplified `Guard` of what still undetermined, None iff fully det.
-   * @throws Contradiction iff determined `Guard` impossible to satisfy
+   *  @return simplified `Guard` of what still undetermined, None iff fully
+   *  determined (and satisfied)
+   *  @throws Contradiction iff fully determined `Guard` and not satisfiable
    */
   def calc_undetermined(guard: Guard): Option[Guard] = {
     import Synchronous.Contradiction
@@ -176,6 +177,9 @@ object Asynchronous {
     sm: Dual_Guard_Observer
     ) {
 
+    @volatile private[this] var lhs_indelibly: Option[Boolean] = None
+    @volatile private[this] var rhs_indelibly: Option[Boolean] = None
+
     def is_indelibly_determined: Boolean
 
     def lhs_observer =
@@ -205,9 +209,6 @@ object Asynchronous {
       }.reduce { (x, y) =>
         (x._1 + y._1, x._2 + y._2)
       }
-
-    @volatile private[this] var lhs_indelibly: Option[Boolean] = None
-    @volatile private[this] var rhs_indelibly: Option[Boolean] = None
   }
 
   private class Conjoined_Eval(parent: Guard_Observer)
