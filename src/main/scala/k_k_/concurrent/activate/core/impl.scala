@@ -35,7 +35,7 @@ sealed trait Promise[T]
   final def get: T =
     result.getOrElse(sys.error("promise has not been fulfilled!"))
 
-  final def getOrElse[S >: T](default: => S): S =
+  final def getOrElse[U >: T](default: => U): U =
     result.getOrElse(default)
 
   final def opt: Option[T] =
