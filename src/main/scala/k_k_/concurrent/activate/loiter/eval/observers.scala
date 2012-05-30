@@ -13,7 +13,6 @@ package k_k_.concurrent.activate.loiter.eval
 
 
 object Event_Observer {
-
   def apply(on_exists: Transaction => Unit) =
     new Event_Observer {
       def exists(tx: Transaction) {
@@ -26,12 +25,14 @@ trait Event_Observer {
   def exists(tx: Transaction)
 }
 
+
 trait Guard_Observer {
   def indelibly_true  (tx: Transaction)
   def indelibly_false (tx: Transaction)
   def tentatively_true(tx: Transaction)
   def indeterminate   (tx: Transaction)
 }
+
 
 trait Dual_Guard_Observer {
   def a__indelibly_true  (tx: Transaction)

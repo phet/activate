@@ -20,7 +20,7 @@ import scala.collection.mutable
 
 /**
  * When an Activatable is only tentatively true, its activation must be deferred
- * until the transaction completes at which time it may be fulfilled (activated)
+ * until the Transaction completes at which time it may be fulfilled (activated)
  */
 trait Deferred {
   def fulfill(tx: Transaction)
@@ -90,15 +90,12 @@ abstract class Transaction(
       case _ => false
     }
 
-  override def hashCode: Int =
-    id.hashCode
+  override def hashCode: Int = id.hashCode
 
-  protected def can_equal(other: Any): Boolean =
-    other.isInstanceOf[Transaction]
+  protected def can_equal(other: Any): Boolean = other.isInstanceOf[Transaction]
 
   /** is `this` 'older than' `other`? */
-  final def <(other: Transaction): Boolean =
-    id < other.id
+  final def <(other: Transaction): Boolean = id < other.id
 
   /** is `this` an ancestor of `other`? */
   final def is_ancestor_of(other: Transaction): Boolean =
