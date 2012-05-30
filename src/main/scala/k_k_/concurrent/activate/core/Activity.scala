@@ -15,9 +15,6 @@ import k_k_.concurrent.activate.loiter._
 
 
 abstract class Activity extends (() => Unit)
-// {
-//  def unary_~ : Activatom = new Activatom(this)
-//}
 
 object Activity {
   implicit def func2Activity[T](f: () => T): Activity =
@@ -79,9 +76,9 @@ class Activatom(
     guard: Guard,
     activate_events: List[Event],
     abandon_events: List[Event],
-    activity: Activity
+    activities: Activity*
     ) =
-    this(guard, activate_events, abandon_events, List(activity))
+    this(guard, activate_events, abandon_events, activities.toList)
 
   def this(guard: Guard, activity: Activity) =
     this(guard, Nil, Nil, List(activity))
@@ -104,19 +101,18 @@ class Activatom(
   def ||(rhs: Guard) = copy(guard || rhs)
   def ^ (rhs: Guard) = copy(guard ^  rhs)
 
-  def add_activates(activates: List[Event]) =
-    copy(activate_events = activates ::: activate_events)
-  def add_abandons(abandons: List[Event]) =
-    copy(abandon_events  = abandons  ::: abandon_events)
 
-  // def ++^(activates: List[Event]) = add_activates(activates)
-  def ++^ = add_activates _
-
-  // def ++/(abandons: List[Event])  = add_abandons(abandons)
-  def ++/ = add_abandons _
+  def add_activates(activates: Event*) =
+    copy(activate_events = (activates :\ activate_events) { _ :: _ })
+  def add_abandons(abandons: Event*) =
+    copy(abandon_events  = (abandons  :\ abandon_events)  { _ :: _ })
 
   def add_activities(acts: Activity*) =
-    copy(activities = (acts :\ activities) { _ :: _ })
+    copy(activities      = (acts      :\ activities)      { _ :: _ })
 
-  def ++&(acts: Activity*) = add_activities(acts)
+  // aliases:
+  def ++^ = add_activates  _
+  def ++/ = add_abandons   _
+
+  def ++& = add_activities _
 }
