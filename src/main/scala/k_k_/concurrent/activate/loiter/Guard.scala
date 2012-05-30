@@ -15,8 +15,7 @@ import k_k_.concurrent.activate.core.{Event, Activity, Activatom}
 
 
 object Guard {
-  implicit def fromEvent(event: Event): Guard =
-    Existential_Guard(event)
+  implicit def fromEvent(event: Event): Guard = Existential_Guard(event)
 }
 
 sealed abstract class Guard {
@@ -27,8 +26,7 @@ sealed abstract class Guard {
 
   def ^ (lhs: Guard): Guard = Disjoined_Guard((this && !lhs), (!this && lhs))
  
-  def ?+>(a: Activity): Activatom =
-    new Activatom(this, a)
+  def ?+>(a: Activity): Activatom = new Activatom(this, a)
  
   override def toString: String =
     this match {
