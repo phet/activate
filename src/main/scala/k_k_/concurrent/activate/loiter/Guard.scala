@@ -20,12 +20,14 @@ object Guard {
 
 sealed abstract class Guard {
 
+  // boolean algebraic operators:
   def unary_!       : Guard = Negated_Guard(this)
   def &&(lhs: Guard): Guard = Conjoined_Guard(this, lhs)
   def ||(lhs: Guard): Guard = Disjoined_Guard(this, lhs)
-
+  // 'exclusive OR'
   def ^ (lhs: Guard): Guard = Disjoined_Guard((this && !lhs), (!this && lhs))
- 
+
+  // combine with an `Activity` 
   def ?+>(a: Activity): Activatom = new Activatom(this, a)
  
   override def toString: String =
