@@ -98,6 +98,7 @@ sealed trait Promise[T]
 
 
 object Implicit_Activarium {
+  // NOTE: only constructed as part of class init.: effectively, (JVM-)lazy val
   implicit val default_activarium = new Activarium
 }
 
