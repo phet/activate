@@ -68,20 +68,16 @@ sealed trait Promise[T]
   final def get: T =
     result.getOrElse(sys.error("promise has not been fulfilled!"))
 
-  final def getOrElse[U >: T](default: => U): U =
-    result.getOrElse(default)
+  final def getOrElse[U >: T](default: => U): U = result.getOrElse(default)
 
-  final def opt: Option[T] =
-    result
+  final def opt: Option[T] = result
 
   /** alias for `get` */
-  final def ? : T =
-    get
+  final def ? : T = get
 
 
   /** alias for `fulfill(value)` */
-  final def apply(value: T): Event =
-    fulfill(value)
+  final def apply(value: T): Event = fulfill(value)
 
   /**
    *  fulfill the promise by providing its value, returning an Event, which
@@ -108,13 +104,10 @@ object Activarium {
   case object Would_Deadlock extends Would_Deadlock
 
   object Promise {
-    def apply[T]: Promise[T] =
-      new Promissory_Event[T]
+    def apply[T]: Promise[T] = new Promissory_Event[T]
   }
 
-
-  def ?[T](event: Promise[T]): T =
-    event.?
+  def ?[T](promise: Promise[T]): T = promise.?
 
 
   implicit def expr2Runnable[T](f: => T): Runnable =
@@ -126,8 +119,7 @@ object Activarium {
   private class Promissory_Event[T]
       extends Promise[T] {
 
-    def fulfill(value: T): Event =
-      new Fulfillment_Event[T](this, value)
+    def fulfill(value: T): Event = new Fulfillment_Event[T](this, value)
 
     private[Activarium] def private_update(value: T): Boolean =
       set_if_unset(value)
