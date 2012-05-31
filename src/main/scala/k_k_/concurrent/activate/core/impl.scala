@@ -215,36 +215,55 @@ class Activarium {
   private val timing_executor = create_timing_executor()
 
 
-  //???final def submit(as: Seq[Activatom]): Activarium = {
-  final def submit(as: Seq[Activatom]) {
+  /**
+   * submit `Activatom`s for evaluation.
+   * @return the *modified* `Activarium`
+   */
+  final def submit(as: Seq[Activatom]): Activarium = {
     as.foreach { install _ }
     this
   }
 
-  //???final def submit(a: Activatom): Activarium = {
-  final def submit(a: Activatom) {
+  /**
+   * submit an `Activatom` for evaluation.
+   * @return the *modified* `Activarium`
+   */
+  final def submit(a: Activatom): Activarium = {
     install(a)()
     this
   }
 
 
-  /** synonym for `atomic_affirm(event)` */
-  final def affirm(event: Event) {
+  /**
+   * synonym for `atomic_affirm(event)`
+   * @return the *modified* `Activarium`
+   */
+  final def affirm(event: Event): Activarium = {
     atomic_affirm(event)
   }
 
-  /** affirm all events, non-atomically */
-  final def affirm(events: List[Event]) {
+  /**
+   * affirm all events, non-atomically
+   * @return the *modified* `Activarium`
+   */
+  final def affirm(events: List[Event]): Activarium = {
     events.foreach { atomic_affirm _ }
+    this
   }
 
-  /** affirm the event; since there's only one, it is, by definition, atomic */
-  final def atomic_affirm(event: Event) {
+  /**
+   * affirm the event; since there's only one, it is, obviously, atomic
+   * @return the *modified* `Activarium`
+   */
+  final def atomic_affirm(event: Event): Activarium = {
     atomic_affirm(List(event))
   }
 
-  /** affirm all events, atomically */
-  final def atomic_affirm(events: List[Event]) {
+  /**
+   * affirm all events, atomically
+   * @return the *modified* `Activarium`
+   */
+  final def atomic_affirm(events: List[Event]): Activarium = {
     val fulfilled_events = events map {
       case fulfillment: Fulfillment_Event[_] => // Promise[T] fulfillment
         import Fulfillment_Event.Conflict
@@ -271,6 +290,7 @@ class Activarium {
         elaborate(tx)
       }
     }
+    this
   }
 
 

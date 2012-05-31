@@ -94,8 +94,6 @@ class TestActivate extends FunSuite with ShouldMatchers {
 
 
 
-    def identity[T](x: T) = x
-
     val (start, defer_result) = defer((x: Int) => x)(42)
     // val (start, defer_result) = defer((x: Int) => x, 42)
     // val (start, defer_result) = defer(identity[Int] _)(42)
@@ -128,8 +126,8 @@ class TestActivate extends FunSuite with ShouldMatchers {
   test("Timing") {
     val two_secs = Timing(2000)
     val e = new Event
-    @@.submit((two_secs && e) ?+> log("timing completed!"))
-    @@.affirm(e)
+    @@.submit((two_secs && e) ?+> log("timing completed!")).
+       affirm(e)
     log("affirmed event; now awaiting completion of timing...")
     @@.await(two_secs)
   }
