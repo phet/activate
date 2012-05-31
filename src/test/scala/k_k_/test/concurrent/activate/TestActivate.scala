@@ -40,7 +40,6 @@ class TestActivate extends FunSuite with ShouldMatchers {
   test("constructing activatoms") {
 
     val e1, e2 = new Event
-
     val guard = e1 && !e2
 
     val work1 = new Activatom(guard, Nil, Nil, () => log("Wee! This is fun!"))
@@ -48,24 +47,16 @@ class TestActivate extends FunSuite with ShouldMatchers {
 
   //  @@.submit(work1)
   //  @@.submit(work2)
-
-    log("affirm in 2s!")
-    Thread.sleep(2000)
+  // 
+  //  log("affirm in 2s!")
+  //  Thread.sleep(2000)
   //  @@.affirm(e1);
-    log("affirmed!")
+  //  log("affirmed!")
   }
 
   test("pythagorean") {
-
-    // pythag((c: Int) => log("(cont) pythag(3,4) = (" + c + ")"))(3, 4)
-
-  //  val result = pythag(3, 4)
-  //  @@.submit(result ?+>
-  //             log("(promised) pythag(3,4) = (" + ?(result) + ")"))
-
-
-   val pythag_result = pythag(3, 4)
-   @@.submit(pythag_result ?+> log("pythag(3, 4) = (" + ?(pythag_result) + ")"))
+    val result = pythag(3, 4)
+    @@.submit(result ?=> log(" ==> pythag(3, 4) = (" + result.? + ") <== "))
   }
 
   test("other stuff!") {
@@ -89,7 +80,7 @@ class TestActivate extends FunSuite with ShouldMatchers {
     }
     log("mapping")
     val map_result = parallel_map(array)((x) => x + x)
-    @@.submit(map_result ?+>
+    @@.submit(map_result ?=>
                log("map(" + array.mkString(", ") + ") = (" + ?(map_result).mkString(", ") + ")"))
 
 
@@ -97,14 +88,14 @@ class TestActivate extends FunSuite with ShouldMatchers {
     val (start, defer_result) = defer((x: Int) => x)(42)
     // val (start, defer_result) = defer((x: Int) => x, 42)
     // val (start, defer_result) = defer(identity[Int] _)(42)
-    @@.submit(defer_result ?+>
+    @@.submit(defer_result ?=>
                log("defer(1) result is (" + ?(defer_result) + ")"))
     log("waiting .5s before func apply")
     Thread.sleep(500)
     @@.affirm(start)
 
     val (start2, defer_result2) = defer((x: Int, y: Int) => x + y)(42, -42)
-    @@.submit(defer_result2 ?+>
+    @@.submit(defer_result2 ?=>
                log("defer(2) result is (" + ?(defer_result2) + ")"))
     log("waiting .5s before func apply")
     Thread.sleep(500)
@@ -112,11 +103,11 @@ class TestActivate extends FunSuite with ShouldMatchers {
 
 
     val async_result = async((x: Int) => x)(42)
-    @@.submit(async_result ?+>
+    @@.submit(async_result ?=>
                log("async(1) result is (" + ?(async_result) + ")"))
 
     val async_result2 = async((x: Int, y: Int) => x + y)(42, -42)
-    @@.submit(async_result2 ?+>
+    @@.submit(async_result2 ?=>
                log("async(2) result is (" + ?(async_result2) + ")"))
 
 
@@ -126,22 +117,45 @@ class TestActivate extends FunSuite with ShouldMatchers {
   test("Timing") {
     val two_secs = Timing(2000)
     val e = new Event
-    @@.submit((two_secs && e) ?+> log("timing completed!")).
+    @@.submit((two_secs && e) ?=> log("timing completed!")).
        affirm(e)
     log("affirmed event; now awaiting completion of timing...")
     @@.await(two_secs)
+    Thread.sleep(3000)
   }
 
 
   def pythag(a: Int, b: Int): Promise[Int] = {
     val a_result, b_result, answer = Promise[Int]
-    @@.submit(+> { @@.affirm(a_result(a*a)) } ::
-              +> { @@.affirm(b_result(b*b)) } ::
-              (a_result && b_result) ?+> (
-                 @@.affirm(answer(math.sqrt(?(a_result) + ?(b_result)).toInt))
-                ) :: Nil)
+    @@.submit(+>  { () => @@.affirm(a_result(a*a)) } ,
+              +=> { @@.affirm(b_result(b*b)) } ,
+              (a_result && b_result) ?+> { () =>
+                 @@.affirm(answer(math.sqrt(a_result.? + ?(b_result)).toInt))
+              })
+
+/*
+    @@.submit (
+      +> { @@.affirm { a_sq(a*a) } } ,
+      +> { @@.affirm { b_sq(b*b) } } ,
+      (a_sq && b_sq) ?=> {
+        @@.affirm { c(math.sqrt(a_sq.? + b_sq.?).toInt) }
+      }
+    )
+
+    @@.submit {
+      +> { @@.affirm { a_sq(a*a) } } |#
+      +> { @@.affirm { b_sq(b*b) } } |-
+      (a_sq && b_sq) ?=> {
+        @@.affirm { c(math.sqrt(a_sq.? + b_sq.?).toInt) }
+      }
+    }
+
+
+~!#^&|:<>
+*/
     answer
   }
+
 
   def factorial_rec(n: Int): Promise[Int] = {
     if (n < 0) {
@@ -149,7 +163,7 @@ class TestActivate extends FunSuite with ShouldMatchers {
     } else {
       val result = Promise[Int]
       val inner = factorial(n-1)
-      @@.submit(inner ?+> @@.affirm(result(n * ?(factorial(n-1)))))
+      @@.submit(inner ?=> @@.affirm(result(n * ?(factorial(n-1)))))
       result
     }
   }
@@ -162,7 +176,7 @@ class TestActivate extends FunSuite with ShouldMatchers {
       if (n == 0) {
         @@.affirm(result(1))
       } else {
-        @@.submit(+> {
+        @@.submit(+=> {
                        val inner = factorial(n-1)
                        @@.submit(inner ?+> { () =>
                                   @@.affirm(result(n * ?(inner))) })
@@ -173,77 +187,18 @@ class TestActivate extends FunSuite with ShouldMatchers {
   }
 
 
-/*
-  def pythag(cont: (Int) => Unit)(a: Int, b: Int) = {
-    val (a_result, b_result) = (Promise[Int], Promise[Int])
-    @@.submit(+> { @@.affirm(a_result(a*a)) } ::
-               +> { @@.affirm(b_result(b*b)) } ::
-               (a_result && b_result) ?+> { () =>
-                 val result = Math.sqrt(get(a_result) + get(b_result))
-                 cont(result)
-               }:: Nil)
-  }
-*/
-
-/*
-  def pythag(cont: (Int) => Unit)(a: Int, b: Int) = {
-    val (a_computed, b_computed) = (new Event, new Event)
-    var a_result: Int = 0
-    var b_result: Int = 0
-    @@.submit(+> { a_result = a*a; @@.affirm(a_computed)} ::
-               +> { b_result = b*b; @@.affirm(b_computed)} ::
-               (a_computed && b_computed) ?+> {
-                 val result = Math.sqrt(a_result + b_result)
-                 cont(result)
-               } :: Nil)
-  }
-*/
-
-
 // `~!@#$%^&*()_-+={[}]|\:;"'<,>.?/
 // `~!@#$%^&*  _-+=    | :  < > ?/
 // `~!@#$%  *   -+=         < > ?
 
-//  val f = a_computed && b_computed ?+>
-//              { val result = Math.sqrt(a_result + b_result)
-
-
-
-/*
-  def pythag(cont: (Int) => Unit)(a: Int, b: Int) = {
-    val (a_computed, b_computed) = (new Event, new Event)
-    var a_result: Int = 0
-    var b_result: Int = 0
-    @@.submit(new Activatom({ a_result = a*a; @@.affirm(a_computed)}) ::
-               new Activatom({ b_result = b*b; @@.affirm(b_computed)}) ::
-               new Activatom(a_computed && b_computed, {
-                               val result = Math.sqrt(a_result + b_result)
-                               cont(result)
-                             }) :: Nil)
-  }
-
-  def pythag(cont: (Int) => Unit)(a: Int, b: Int) = {
-    val (a_computed, b_computed) = (new Event, new Event)
-    var a_result: Int = 0
-    var b_result: Int = 0
-    @@.submit(new Activatom({ a_result = a*a; @@.affirm(a_computed)}))
-    @@.submit(new Activatom({ b_result = b*b; @@.affirm(b_computed)}))
-    @@.submit(new Activatom(a_computed && b_computed,
-                             { val result = Math.sqrt(a_result + b_result)
-                               cont(result)}))
-  }
-*/
 
   def print_factorial(n: Int) {
     val fac_result = factorial(n)
-    @@.submit(fac_result ?+>
+    @@.submit(fac_result ?=>
                log("factorial(" + n + ") = (" + fac_result.? + ")"))
 
-/*
-               log("factorial(" + n + ") = (" + ?(fac_result) + ")"))
-
-               log("factorial(" + n + ") = (" + <(fac_result) + ")"))
-*/
+//               log("factorial(" + n + ") = (" + ?(fac_result) + ")"))
+//               log("factorial(" + n + ") = (" + <(fac_result) + ")"))
   }
 
 
@@ -294,14 +249,14 @@ class TestActivate extends FunSuite with ShouldMatchers {
       def rerun(n: Int) {
         val failed = new Event
         log("rerun")
-        @@.submit(+> {
+        @@.submit(+=> {
                        try {
                          task(stop)
                        } finally {
                          @@.affirm(failed)
                        }
-                     } ::
-                  (failed && !stop) ?+> rerun(n+1) :: Nil)
+                     } ,
+                  (failed && !stop) ?=> rerun(n+1))
       }
       rerun(0)
       stop
@@ -311,7 +266,7 @@ class TestActivate extends FunSuite with ShouldMatchers {
       val stop = new Event
       def rerun {
         val failed = task(stop)
-        @@.submit((failed && !stop) ?+> rerun)
+        @@.submit((failed && !stop) ?=> rerun)
       }
       rerun
       stop
@@ -330,7 +285,7 @@ class TestActivate extends FunSuite with ShouldMatchers {
                    })
     }
     // loiter on result_ready, now that it's fully described
-    @@.submit(result_ready ?+> @@.affirm(result_event(result)))
+    @@.submit(result_ready ?=> @@.affirm(result_event(result)))
     result_event
   }
 
@@ -339,14 +294,14 @@ class TestActivate extends FunSuite with ShouldMatchers {
     def apply[P1,R](f: P1 => R)(a1: P1): (Event, Promise[R]) = {
     // def apply[P1,R](f: P1 => R, a1: P1): (Event, Promise[R]) = {
       val (start, result) = (new Event, Promise[R])
-      @@.submit(start ?+> @@.affirm(result(f(a1))))
+      @@.submit(start ?=> @@.affirm(result(f(a1))))
       (start, result)
     }
 
     def apply[P1,P2,R](f: (P1, P2) => R)(a1: P1, a2: P2):
         (Event, Promise[R]) = {
       val (start, result) = (new Event, Promise[R])
-      @@.submit(start ?+> @@.affirm(result(f(a1, a2))))
+      @@.submit(start ?=> @@.affirm(result(f(a1, a2))))
       (start, result)
     }
   }

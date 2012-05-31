@@ -14,41 +14,41 @@ package k_k_.concurrent.activate.core
 import k_k_.concurrent.activate.loiter._
 
 
-abstract class Activity extends (() => Unit)
+final class Activity(thunk: () => Unit) extends (() => Unit) {
+  assert(!thunk.isInstanceOf[Activity]) // (expected never to happen)
+  def apply() {
+    thunk()
+  }
+}
 
 object Activity {
-  implicit def func2Activity[T](f: () => T): Activity =
-    new Activity {
-      def apply() = f()
-    }
+  implicit def func2Activity[T](f: () => T): Activity = {
+    // IMPORTANT: ascription to Unit satisfies Activity ctor param type exactly,
+    // preventing an attempt to recursively call this very implicit (since
+    // Activity extends the same type as its ctor param).
+    new Activity(() => f(): Unit)
+  }
 
-  implicit def expr2Activity[T](f: => T): Activity =
-    new Activity {
-      def apply() = f
-    }
+  // NO implicit conversion from by-name 'expr', since found to mask errors:
+  // implicit def expr2Activity[T](e: => T): Activity = new Activity(() => e)
 }
 
 
 object +> {
-
-  import Activity._
-
   def apply(a: Activity): Activatom =
     new Activatom(a)
+}
+
+// support conversion from by-name 'expr' only on request (by use of this obj.)
+object +=> {
+  def apply[T](e: => T): Activatom =
+    new Activatom(new Activity(() => e))
 }
 
 
 object Activatom {
   implicit def Activity2Activatom(a: Activity): Activatom =
     new Activatom(a)
-
-  import Activity._
-
-  implicit def func2Activatom[T](f: () => T): Activatom =
-    new Activatom(f)
-
-  implicit def expr2Activatom[T](f: => T): Activatom =
-    new Activatom(f)
 
   /** a kind of temporal if/else for a Guard and two groups of Event`s */
   def upon(guard: Guard, true_events: List[Event], false_events: List[Event]):
@@ -80,11 +80,11 @@ class Activatom(
     ) =
     this(guard, activate_events, abandon_events, activities.toList)
 
-  def this(guard: Guard, activity: Activity) =
-    this(guard, Nil, Nil, List(activity))
+  def this(guard: Guard, activities: Activity*) =
+    this(guard, Nil, Nil, activities.toList)
 
-  def this(activity: Activity) =
-    this(Null_Guard, Nil, Nil, List(activity))
+  def this(activities: Activity*) =
+    this(Null_Guard, Nil, Nil, activities.toList)
 
 
   def copy(

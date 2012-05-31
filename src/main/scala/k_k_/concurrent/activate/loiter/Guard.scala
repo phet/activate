@@ -29,6 +29,9 @@ sealed abstract class Guard {
 
   // combine with an `Activity` 
   def ?+>(a: Activity): Activatom = new Activatom(this, a)
+  // combine with a by-name 'expression'
+  def ?=>[T](e: => T):  Activatom = new Activatom(this, new Activity(() => e))
+
  
   override def toString: String =
     this match {

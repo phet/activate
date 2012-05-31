@@ -214,52 +214,27 @@ class Activarium {
    * submit `Activatom`s for evaluation/execution
    * @return the *modified* `Activarium`
    */
-  final def submit(as: Seq[Activatom]): Activarium = {
+  final def submit(as: Activatom*): Activarium = {
     as.foreach { a => install(a)() }
     this
   }
 
-  /**
-   * submit an `Activatom` for evaluation/execution
-   * @return the *modified* `Activarium`
-   */
-  final def submit(a: Activatom): Activarium = {
-    install(a)()
-    this
-  }
-
-
-  /**
-   * synonym for `affirm_atomic(event)`
-   * @return the *modified* `Activarium`
-   */
-  final def affirm(event: Event): Activarium = {
-    affirm_atomic(event)
-  }
 
   /**
    * affirm all events, non-atomically
    * @return the *modified* `Activarium`
    */
-  final def affirm(events: List[Event]): Activarium = {
-    events.foreach { affirm_atomic _ }
+  final def affirm(events: Event*): Activarium = {
+    events.foreach { e => affirm_atomic(e) }
     this
-  }
-
-  /**
-   * affirm the event; since there's only one, it is, obviously, atomic
-   * @return the *modified* `Activarium`
-   */
-  final def affirm_atomic(event: Event): Activarium = {
-    affirm_atomic(List(event))
   }
 
   /**
    * affirm all events, atomically
    * @return the *modified* `Activarium`
    */
-  final def affirm_atomic(events: List[Event]): Activarium = {
-    val fulfilled_events = events map {
+  final def affirm_atomic(events: Event*): Activarium = {
+    val fulfilled_events = events.toList.map {
       case fulfillment: Fulfillment_Event[_] => // Promise[T] fulfillment
         import Fulfillment_Event.Conflict
         for {
