@@ -235,11 +235,11 @@ class Activarium {
 
 
   /**
-   * synonym for `atomic_affirm(event)`
+   * synonym for `affirm_atomic(event)`
    * @return the *modified* `Activarium`
    */
   final def affirm(event: Event): Activarium = {
-    atomic_affirm(event)
+    affirm_atomic(event)
   }
 
   /**
@@ -247,7 +247,7 @@ class Activarium {
    * @return the *modified* `Activarium`
    */
   final def affirm(events: List[Event]): Activarium = {
-    events.foreach { atomic_affirm _ }
+    events.foreach { affirm_atomic _ }
     this
   }
 
@@ -255,15 +255,15 @@ class Activarium {
    * affirm the event; since there's only one, it is, obviously, atomic
    * @return the *modified* `Activarium`
    */
-  final def atomic_affirm(event: Event): Activarium = {
-    atomic_affirm(List(event))
+  final def affirm_atomic(event: Event): Activarium = {
+    affirm_atomic(List(event))
   }
 
   /**
    * affirm all events, atomically
    * @return the *modified* `Activarium`
    */
-  final def atomic_affirm(events: List[Event]): Activarium = {
+  final def affirm_atomic(events: List[Event]): Activarium = {
     val fulfilled_events = events map {
       case fulfillment: Fulfillment_Event[_] => // Promise[T] fulfillment
         import Fulfillment_Event.Conflict
@@ -435,10 +435,10 @@ class Activarium {
         } foreach { ms =>
           val remaining_ms = ms - (System.currentTimeMillis - at_start_ms)
           if (remaining_ms <= 0) {
-            atomic_affirm(event)
+            affirm_atomic(event)
           } else {
             timing_executor.schedule(
-                atomic_affirm(event),
+                affirm_atomic(event),
                 remaining_ms, TimeUnit.MILLISECONDS)
           }
         }
