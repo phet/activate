@@ -6,22 +6,33 @@
 
   <groupId>k_k_.concurrent</groupId>
   <artifactId>k_k_.concurrent.activate</artifactId>
-  <version>0.6.0-SNAPSHOT</version>
+  <version>0.7.0-SNAPSHOT</version>
 
   <name>Activate Library for Scala</name>
   <description>
     Activate is a Scala Library for Concurrency-Oriented Programming in the
     Activity Activation Style.
 
-    Copyright (c)2009-2011 by Corbin "Kip" Kohn
+    Copyright (c)2009-2012 by Corbin "Kip" Kohn
     All Rights Reserved.
-    Released under the terms of the Artistic License 2.0
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
   </description>
   <inceptionYear>2009</inceptionYear>
   <licenses>
     <license>
-      <name>Artistic License 2.0</name>
-      <url>http://www.opensource.org/licenses/artistic-license-2.0.php</url>
+      <name>Apache License, Version 2.0</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0</url>
     </license>
   </licenses>
 
