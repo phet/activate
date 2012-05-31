@@ -133,7 +133,6 @@ object Activarium {
     private[Activarium] val child_event: Promissory_Event[T],
     fulfillment: T
     ) extends Event {
-
     import Fulfillment_Event.Conflict
 
     private[Activarium] def attempt(): Option[Conflict[T]] =
@@ -208,16 +207,16 @@ class Activarium {
 
 
   /**
-   * submit `Activatom`s for evaluation.
+   * submit `Activatom`s for evaluation/execution
    * @return the *modified* `Activarium`
    */
   final def submit(as: Seq[Activatom]): Activarium = {
-    as.foreach { install _ }
+    as.foreach { a => install(a)() }
     this
   }
 
   /**
-   * submit an `Activatom` for evaluation.
+   * submit an `Activatom` for evaluation/execution
    * @return the *modified* `Activarium`
    */
   final def submit(a: Activatom): Activarium = {
@@ -287,16 +286,21 @@ class Activarium {
 
 
   /**
-   *  awaits determination of `guard`, aborting after `max_ms` millis
+   *  awaits determination of `guard`, aborting after `max_n` (time)`unit`s
    *  @return
    *    - true iff `guard` satisfied
-   *    - false iff `guard` undetermined (after waiting `max_ms`)
+   *    - false iff `guard` undetermined (after waiting `max_n`)
    *    - throw `Would_Deadlock` iff `guard` determined never to be satisfiable
-   *  NOTE: (default) `max_ms` of 0L will wait indefinitely for determination
+   *  NOTE: (default) `max_n` of 0L will wait indefinitely for determination
    */
   @throws(classOf[Would_Deadlock])
-  final def await(guard: Guard, max_ms: Long = 0L): Boolean = {
+  final def await(
+      guard: Guard,
+      max_n: Long = 0L,
+      unit: TimeUnit = TimeUnit.MILLISECONDS
+    ): Boolean = {
     val start_ms = System.currentTimeMillis
+    val max_ms = unit.toMillis(max_n)
     try {
       sync.calc_undetermined(guard) match {
         case None => true // guard has been fully satisfied
@@ -312,9 +316,12 @@ class Activarium {
             Activatom.upon(undetermined_guard, satisfied, not_satisfiable)
           }(start_ms)
           wait_obj synchronized {
-            while (!is_non_tx_event_confirmed(satisfied) &&
+            var wait_ms = max_ms - (System.currentTimeMillis - start_ms)
+            while (wait_ms >= 0 &&
+                   !is_non_tx_event_confirmed(satisfied) &&
                    !is_non_tx_event_confirmed(not_satisfiable)) {
-              wait_obj.wait(max_ms)
+              wait_obj.wait(wait_ms)
+              wait_ms = max_ms - (System.currentTimeMillis - start_ms)
             }
           }
           is_non_tx_event_confirmed(satisfied) ||
@@ -327,11 +334,6 @@ class Activarium {
       case Synchronous.Contradiction => throw Would_Deadlock // unsatisfiable
     }
   }
-
-  /** alternative to `await(guard, max_ms)` that allows specifying `TimeUnit` */
-  @throws(classOf[Would_Deadlock])
-  final def await(guard: Guard, n: Long, unit: TimeUnit): Boolean =
-    await(guard, unit.toMillis(n))
 
 
   /** overridable executor factory for user-defined Activity`s */
