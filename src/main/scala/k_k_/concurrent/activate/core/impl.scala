@@ -336,6 +336,11 @@ class Activarium {
     }
   }
 
+  /** alternative to `await(guard, max_ms)` that allows specifying `TimeUnit` */
+  @throws(classOf[Would_Deadlock])
+  final def await(guard: Guard, n: Long, unit: TimeUnit): Boolean =
+    await(guard, unit.toMillis(n))
+
 
   /** overridable executor factory for user-defined Activity`s */
   protected def create_activity_executor(): ExecutorService =
