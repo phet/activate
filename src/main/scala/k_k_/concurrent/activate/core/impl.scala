@@ -97,6 +97,11 @@ sealed trait Promise[T]
 }
 
 
+object Implicit_Activarium {
+  implicit val default_activarium = new Activarium
+}
+
+
 object Activarium {
 
   final val num_timing_threads = 2
@@ -110,6 +115,40 @@ object Activarium {
   }
 
   def ?[T](promise: Promise[T]): T = promise.?
+
+
+  /* `Activarium` 'methods' that may be invoked on an implicit `Activarium`: */
+
+  /** submit `Activatom`s for evaluation/execution */
+  def submit(as: Activatom*)(implicit context: Activarium) {
+    context.submit(as : _*)
+  }
+
+
+  /** affirm all events, non-atomically */
+  def affirm(events: Event*)(implicit context: Activarium) {
+    context.affirm(events : _*)
+  }
+  /** affirm all events, atomically */
+  def affirm_atomic(events: Event*)(implicit context: Activarium) {
+    context.affirm_atomic(events : _*)
+  }
+
+  /**
+   *  awaits determination of `guard`, aborting after `max_n` (time)`unit`s
+   *  @return
+   *    - true iff `guard` satisfied
+   *    - false iff `guard` undetermined (after waiting `max_n`)
+   *    - throw `Would_Deadlock` iff `guard` determined never to be satisfiable
+   *  NOTE: (default) `max_n` of 0L will wait indefinitely for determination
+   */
+  @throws(classOf[Would_Deadlock])
+  def await(
+      guard: Guard,
+      max_n: Long = 0L,
+      unit: TimeUnit = TimeUnit.MILLISECONDS)
+     (implicit context: Activarium): Boolean =
+    context.await(guard, max_n)
 
 
   private implicit def expr2Runnable[T](f: => T): Runnable =
@@ -469,12 +508,11 @@ class Activarium {
   1. finish conjoined and disjoined statecharts
      !!!!!use the later of two Transaction`s when they both figure in together!!!!!
        ?????how to get around the problem of only being able to have a single transaction, when the other tentative may be the one involved in the crucial atomic affirming??????
-  2. add companion object methods to Activarium, which taken an implicit Activarium
-  3. implement shutdown/stop
-  4. decide whether to be less eager in activating a tentative immediately after transaction close.  ???what if it gets queued and does not run for some time, but in the meanwhile, would have been deemed eternally_false?????  in addition, would there be any guarantee not upheld if it were allowed to become eternally_true, instead of merely proceeding from tentative????
-  5. ???what if a Promise is affirmed without a value???
+  2. implement shutdown/stop
+  3. decide whether to be less eager in activating a tentative immediately after transaction close.  ???what if it gets queued and does not run for some time, but in the meanwhile, would have been deemed eternally_false?????  in addition, would there be any guarantee not upheld if it were allowed to become eternally_true, instead of merely proceeding from tentative????
+  4. ???what if a Promise is affirmed without a value???
      !!!!must have a type of Loiterable which may be used in a Guard, but is not an Event, and may not be affirmed
-  6. create a type in which Event may be wrapped so those holding it may only wait, but not actually affirm it... perhaps this would be sub-type fo Loiterable, which is also not an Event!!!
+  5. create a type in which Event may be wrapped so those holding it may only wait, but not actually affirm it... perhaps this would be sub-type fo Loiterable, which is also not an Event!!!
 */
 
   private class Activatable private (

@@ -59,6 +59,26 @@ class TestActivate extends FunSuite with ShouldMatchers {
     @@.submit(result ?=> log(" ==> pythag(3, 4) = (" + result.? + ") <== "))
   }
 
+  test("pythagorean (Implicit_Activarium example)") {
+    import Implicit_Activarium._
+
+    val (a, b) = (5, 12)
+    val a_sq, b_sq, c = Promise[Int]
+    submit(
+      +=> { affirm { a_sq(a*a) } } ,
+      +=> { affirm { b_sq(b*b) } } ,
+      (a_sq && b_sq) ?=> {
+        affirm { c(math.sqrt(a_sq.? + b_sq.?).toInt) }
+      }
+    )
+
+    if (await(c, 1500)) {
+      log(" ** implicit pythagorean says: %d, %d ... %d ** ".format(a, b, c.?))
+    } else {
+      sys.error("implicit pythagorean gave no answer in under 1.5s!")
+    }
+  }
+
   test("other stuff!") {
 
     print_factorial(5)
