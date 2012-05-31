@@ -447,6 +447,7 @@ class Activarium {
   }
 
   /** @return true iff `event` found to have been confirmed in meanwhile */
+  @scala.annotation.tailrec
   private def update_expectation(
     ev: Event,
     curr_expect: Option[Event_Expectation],
