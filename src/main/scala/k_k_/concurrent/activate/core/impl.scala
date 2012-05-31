@@ -85,6 +85,8 @@ sealed trait Promise[T]
    */
   def fulfill(value: T): Event
 
+  override def toString = "Promise[_](%s)".format(result)
+
 
   protected final def set_if_unset(v: T): Boolean = synchronized {
     result.isEmpty && {
@@ -115,7 +117,6 @@ object Activarium {
       def run() = f
     }
 
-
   private class Promissory_Event[T]
       extends Promise[T] {
 
@@ -134,6 +135,9 @@ object Activarium {
     fulfillment: T
     ) extends Event {
     import Fulfillment_Event.Conflict
+
+    override def toString =
+      "Fulfillment_Event[_](%s) of %s".format(fulfillment, child_event)
 
     private[Activarium] def attempt(): Option[Conflict[T]] =
       if (child_event.private_update(fulfillment)) None
