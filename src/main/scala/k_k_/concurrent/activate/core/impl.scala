@@ -19,11 +19,44 @@ import org.slf4j.LoggerFactory
 
 import scala.util.control.Exception.handling
 
-import java.util.concurrent.{ConcurrentHashMap, Executors, ExecutorService}
+import java.util.concurrent.{ConcurrentHashMap, TimeUnit, Executors,
+                             ExecutorService, ScheduledExecutorService}
 
 
 class Event {
-  def unary_! : Guard = Negated_Existential_Guard(this)
+  def unary_! = Negated_Existential_Guard(this)
+}
+
+
+case class Timing_Event private[core](ms: Long)
+    extends Event
+
+
+object Timing {
+  /** Convert `Timing` to `Existential_Guard` based on a fresh 'timing event' */
+  implicit def Timing2Guard(t: Timing): Existential_Guard = t.new_event
+}
+
+/**
+ * A `Timing` represents a duration in the abstract, which may render any number
+ * of (distinct) concrete 'timing events' to realize that duration.  These take
+ * the form of a specially-handled `Event` that is automatically `affirm`ed at
+ * the conclusion of the duration's measure.  An `Event's duration commences the
+ * moment the first `Guard` in which it is present is `submit`ted to a given
+ * `Activarium` (the affirmation of a 'timing event` is, as with that of every
+ * `Event`, scoped per `Activarium`).  The `Event`s timing lifecycle is thus
+ * common across all `Guard`s in which it participates; to achieve independence
+ * between `Guard`s, use mutiple events of the same (or equivalent) `Timing`.
+ */
+case class Timing(ms: Long) {
+  def this(n: Long, unit: TimeUnit) = this(unit.toMillis(n))
+
+  // Timing_Event`s are always singularly atomic.
+  // Even when submitted all for the first time as part of the same Guard,
+  // affirmation for multiple Timing_Event`s may happen out of temporal order
+  // (i.e. not necessarily in order of increasing `ms` values), as a result of
+  // small values being dwarfed by Guard evaluation overhead (itself small).
+  def new_event: Event = new Timing_Event(ms)
 }
 
 
@@ -67,6 +100,8 @@ sealed trait Promise[T]
 
 
 object Activarium {
+
+  final val num_timing_threads = 2
 
   // internal multi-level 'return'; stacktrace unimportant, so 'object' fine
   class Would_Deadlock extends Exception
@@ -176,6 +211,8 @@ class Activarium {
   private val activity_executor = create_activity_executor()
   // Executor for internal management of events, guards, etc.
   private val evaluation_executor = create_evaluation_executor()
+  // (Scheduled) Executor dedicated to timing events
+  private val timing_executor = create_timing_executor()
 
 
   //???final def submit(as: Seq[Activatom]): Activarium = {
@@ -186,7 +223,7 @@ class Activarium {
 
   //???final def submit(a: Activatom): Activarium = {
   final def submit(a: Activatom) {
-    install(a)
+    install(a)()
     this
   }
 
@@ -209,7 +246,7 @@ class Activarium {
   /** affirm all events, atomically */
   final def atomic_affirm(events: List[Event]) {
     val fulfilled_events = events map {
-      case fulfillment: Fulfillment_Event[_] =>
+      case fulfillment: Fulfillment_Event[_] => // Promise[T] fulfillment
         import Fulfillment_Event.Conflict
         for {
           Conflict(existing, attempted) <- fulfillment.attempt()
@@ -247,6 +284,7 @@ class Activarium {
    */
   @throws(classOf[Would_Deadlock])
   final def await(guard: Guard, max_ms: Long = 0L): Boolean = {
+    val start_ms = System.currentTimeMillis
     try {
       sync.calc_undetermined(guard) match {
         case None => true // guard has been fully satisfied
@@ -260,7 +298,7 @@ class Activarium {
           // Triggering_Event.pull()!
           install {
             Activatom.upon(undetermined_guard, satisfied, not_satisfiable)
-          }
+          }(start_ms)
           wait_obj synchronized {
             while (!is_non_tx_event_confirmed(satisfied) &&
                    !is_non_tx_event_confirmed(not_satisfiable)) {
@@ -286,6 +324,13 @@ class Activarium {
   /** overridable executor factory for internal mgmt. of Event`s/Guard`s/etc. */
   protected def create_evaluation_executor(): ExecutorService =
     Executors.newCachedThreadPool()
+
+  /**
+   * overridable executor factory for internal mgmt. of Timing_Event`s
+   * A dedicated executor ensures execution even against evaluation backlog.
+   */
+  protected def create_timing_executor(): ScheduledExecutorService =
+    Executors.newScheduledThreadPool(num_timing_threads)
 
 
   private def elaborate(tx: Transaction) {
@@ -334,14 +379,12 @@ class Activarium {
       }
   }
 
-  private def install(a: Activatom) {
-    install(a.guard, new Activatable(a).observer)
+  private def install(a: Activatom)(start_ms: Long = System.currentTimeMillis) {
+    async.track(
+        a.guard,
+        new Activatable(a).observer,
+        start_ms)
   }
-
-  private def install(guard: Guard, observer: Guard_Observer) {
-    async.track(guard, observer)
-  }
-
 
   // `require_completed_tx` ensures isolation by only considering an event
   // `is_confirmed` once its transaction has completed
@@ -353,7 +396,8 @@ class Activarium {
     }
 
   /** @return true iff `event` has been confirmed */
-  private def link(event: Event, observer: Event_Observer): Boolean = {
+  private def link(event: Event, observer: Event_Observer, at_start_ms: Long):
+      Boolean = {
     event_registry.get(event) match {
       case Event_Confirmation(tx) =>
         observer.exists(tx)
@@ -361,6 +405,18 @@ class Activarium {
       case expect: Event_Expectation =>
         update_expectation(event, Some(expect), observer)
       case null =>
+        PartialFunction.condOpt(event) { // conditional handling of Timing`s
+          case Timing_Event(ms) => ms
+        } foreach { ms =>
+          val remaining_ms = ms - (System.currentTimeMillis - at_start_ms)
+          if (remaining_ms <= 0) {
+            atomic_affirm(event)
+          } else {
+            timing_executor.schedule(
+                atomic_affirm(event),
+                remaining_ms, TimeUnit.MILLISECONDS)
+          }
+        }
         update_expectation(event, None, observer)
     }
   }
@@ -414,7 +470,7 @@ class Activarium {
   1. finish conjoined and disjoined statecharts
      !!!!!use the later of two Transaction`s when they both figure in together!!!!!
        ?????how to get around the problem of only being able to have a single transaction, when the other tentative may be the one involved in the crucial atomic affirming??????
-  2. implement Timer_Event
+  2. add companion object methods to Activarium, which taken an implicit Activarium
   3. implement shutdown/stop
   4. decide whether to be less eager in activating a tentative immediately after transaction close.  ???what if it gets queued and does not run for some time, but in the meanwhile, would have been deemed eternally_false?????  in addition, would there be any guarantee not upheld if it were allowed to become eternally_true, instead of merely proceeding from tentative????
   5. ???what if a Promise is affirmed without a value???

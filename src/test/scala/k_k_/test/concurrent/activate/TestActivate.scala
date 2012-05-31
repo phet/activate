@@ -125,6 +125,15 @@ class TestActivate extends FunSuite with ShouldMatchers {
     assert(true)
   }
 
+  test("Timing") {
+    val two_secs = Timing(2000)
+    val e = new Event
+    @@.submit((two_secs && e) ?+> log("timing completed!"))
+    @@.affirm(e)
+    log("affirmed event; now awaiting completion of timing...")
+    @@.await(two_secs)
+  }
+
 
   def pythag(a: Int, b: Int): Promise[Int] = {
     val a_result, b_result, answer = Promise[Int]

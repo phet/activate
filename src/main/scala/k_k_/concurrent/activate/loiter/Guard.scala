@@ -15,7 +15,7 @@ import k_k_.concurrent.activate.core.{Event, Activity, Activatom}
 
 
 object Guard {
-  implicit def fromEvent(event: Event): Guard = Existential_Guard(event)
+  implicit def fromEvent(event: Event) = Existential_Guard(event)
 }
 
 sealed abstract class Guard {

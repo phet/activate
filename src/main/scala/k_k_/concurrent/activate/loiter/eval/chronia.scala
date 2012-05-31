@@ -34,18 +34,21 @@ object Event_History {
 
 // for asynchronous evaluation
 trait Event_Observatory {
-  /** registers `event` with `observer`
+  /**
+   * registers `event` with `observer`, noting that `event` first received at
+   * `start_ms` (important when procesing Timing_Event`s).
    * @return true iff observer notified during registration, hence never again
    */
-  def register(event: Event, observer: Event_Observer): Boolean
+  def register(event: Event, observer: Event_Observer, start_ms: Long): Boolean
   val origin_tx: Transaction
 }
 
 object Event_Observatory {
 
-  def apply(orig_tx: Transaction)(reg: (Event, Event_Observer) => Boolean) =
+  def apply(orig_tx: Transaction)(reg: (Event,Event_Observer,Long) => Boolean) =
     new Event_Observatory {
-      def register(event: Event, obs: Event_Observer): Boolean = reg(event, obs)
+      def register(event: Event, obs: Event_Observer, start_ms: Long): Boolean =
+        reg(event, obs, start_ms)
       val origin_tx = orig_tx
     }
 }
@@ -131,22 +134,6 @@ class Synchronous(history: Event_History) {
                 }
               }
           }
-        /******** equivalent formulation:
-          try {
-            // map past None since disjunction fully deter. once either side is
-            preorder(l, negate) flatMap { lhs =>
-              try {
-                preorder(r, negate) map { rhs =>
-                  Disjoined_Guard(lhs, rhs)
-                }
-              } catch {
-                case Contradiction => Some(lhs)
-              }
-            }
-          } catch {
-            case Contradiction => preorder(r, negate)
-          }
-         */
       }
 
     preorder(guard, false)
@@ -232,7 +219,12 @@ object Asynchronous {
 
 class Asynchronous(observatory: Event_Observatory) {
 
-  def track(guard: Guard, observer: Guard_Observer) {
+  /**
+   * asynchronously track `guard` on behalf of `observer`, considering `guard`s
+   * tracking to have begun at `start_ms` (crucial for `Timing_Event`s, whose
+   * registration with the `Event_Observatory` is happening for the first time).
+   */
+  def track(guard: Guard, observer: Guard_Observer, start_ms: Long) {
     import Asynchronous._
     import observatory.origin_tx
 
@@ -250,21 +242,21 @@ class Asynchronous(observatory: Event_Observatory) {
 
         case (Existential_Guard(event), false) =>
           val evaluator = new Existential_Eval(observer)
-          observatory.register(event, evaluator.observer)
+          observatory.register(event, evaluator.observer, start_ms)
 
         case (Existential_Guard(event), true) =>
           val evaluator = new Negated_Existential_Eval(observer)
-          observatory.register(event, evaluator.observer) ||
+          observatory.register(event, evaluator.observer, start_ms) ||
             evaluator.announce_non_existent_event(origin_tx)
 
         case (Negated_Existential_Guard(event), false) =>
           val evaluator = new Negated_Existential_Eval(observer)
-          observatory.register(event, evaluator.observer) ||
+          observatory.register(event, evaluator.observer, start_ms) ||
             evaluator.announce_non_existent_event(origin_tx)
 
         case (Negated_Existential_Guard(event), true) =>
           val evaluator = new Existential_Eval(observer)
-          observatory.register(event, evaluator.observer)
+          observatory.register(event, evaluator.observer, start_ms)
 
 
         // rewrite in Negated Normal Form by application of DeMorgan's Law:
