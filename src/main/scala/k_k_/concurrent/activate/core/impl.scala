@@ -110,7 +110,7 @@ object Activarium {
   def ?[T](promise: Promise[T]): T = promise.?
 
 
-  implicit def expr2Runnable[T](f: => T): Runnable =
+  private implicit def expr2Runnable[T](f: => T): Runnable =
     new Runnable {
       def run() = f
     }
